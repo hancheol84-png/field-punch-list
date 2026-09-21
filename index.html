@@ -99,6 +99,7 @@
 </head>
 <body>
 
+<div id="storageWarn" class="bad" role="alert" hidden style="position:sticky;top:0;z-index:20"></div>
 <div class="wrap">
 
   <div class="card" style="padding:12px 14px">
@@ -151,6 +152,7 @@
     <div class="row" id="phrases"></div>
     <div style="margin-top:12px">
       <label class="f" for="textIn">직접 입력 (자판 마이크로 말해도 됩니다)</label>
+      <div id="inputWarn" class="bad" role="alert" hidden></div>
       <textarea id="textIn" placeholder="예) 우측벽 좌측하단 골조 턱짐 할석미장"></textarea>
     </div>
     <div class="row input-actions" style="margin-top:10px">
@@ -249,7 +251,7 @@
 
   var S = load();
   var rows = S.rows || [];
-  var cur = {dong: S.dongs[0], unit:"", spot:"", trade:""};
+  var cur = S.current || {dong: S.dongs[0], unit:"", spot:"", trade:""};
   var stat = {up:0, restarts:0, heard:0, fixed:0};
   var rec = null, listening = false, startedAt = 0, tick = null;
 
@@ -260,8 +262,19 @@
     return base;
   }
   function save(){
+    S.version = 2;
     S.rows = rows;
-    try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){}
+    S.current = cur;
+    S.draft = $("textIn").value;
+    try{
+      localStorage.setItem(LS, JSON.stringify(S));
+      $("storageWarn").hidden = true;
+      return true;
+    }catch(e){
+      $("storageWarn").textContent = "이 기기에 저장되지 않았습니다 — 지금 엑셀로 받아 두세요. 입력 중인 내용도 따로 보관해 주세요.";
+      $("storageWarn").hidden = false;
+      return false;
+    }
   }
 
   /* ---------- 한글 자모 비교 : "침살3" 을 "침실3" 으로 붙이기 ---------- */
@@ -412,16 +425,16 @@
   }
 
   function paintDongs(){
-    chips($("dongs"), S.dongs, cur.dong, function(v){ cur.dong=v; paintCtx(); paintDongs(); }, "＋", function(){
+    chips($("dongs"), S.dongs, cur.dong, function(v){ cur.dong=v; save(); paintCtx(); paintDongs(); }, "＋", function(){
       var v = prompt("동 번호"); if(v){ S.dongs.push(v.trim()); cur.dong=v.trim(); save(); paintDongs(); paintCtx(); }
     });
   }
   function paintSpots(){
-    chips($("spots"), S.spots, cur.spot, function(v){ cur.spot = (cur.spot===v ? "" : v); paintCtx(); paintSpots(); },
+    chips($("spots"), S.spots, cur.spot, function(v){ cur.spot = (cur.spot===v ? "" : v); save(); paintCtx(); paintSpots(); },
       "＋ 위치", function(){ var v=prompt("위치 이름"); if(v){ S.spots.push(v.trim()); cur.spot=v.trim(); save(); paintSpots(); paintCtx(); } });
   }
   function paintTrades(){
-    chips($("trades"), S.trades, cur.trade, function(v){ cur.trade = (cur.trade===v ? "" : v); paintCtx(); paintTrades(); },
+    chips($("trades"), S.trades, cur.trade, function(v){ cur.trade = (cur.trade===v ? "" : v); save(); paintCtx(); paintTrades(); },
       "＋ 공종", function(){ var v=prompt("공종 이름"); if(v){ S.trades.push(v.trim()); cur.trade=v.trim(); save(); paintTrades(); paintCtx(); } });
   }
   function paintPhrases(){
@@ -506,16 +519,28 @@
     if(!n){ return; }
     cur.unit = n;
     $("unitIn").value = "";
-    paintCtx(); paintNext();
+    save(); paintCtx(); paintNext();
+    $("inputWarn").hidden = true;
     say(cur.dong+"동 "+n+"호");
   }
   function addRow(text){
-    if(!text || !text.trim()) return;
-    if(!cur.unit){ flash("먼저 호수를 정하세요"); return; }
+    if(!text || !text.trim()) return false;
+    if(!cur.unit){
+      var el = $("textIn");
+      if(el.value.trim() !== text.trim()) el.value += (el.value ? "\n" : "") + text;
+      save();
+      $("inputWarn").textContent = "먼저 호수를 정하세요. 입력한 내용은 그대로 남아 있습니다.";
+      $("inputWarn").hidden = false;
+      flash("먼저 호수를 정하세요. 입력을 보관했습니다.");
+      $("unitIn").focus();
+      return false;
+    }
+    $("inputWarn").hidden = true;
     rows.push({dong:cur.dong, core:coreOf(cur.unit), unit:cur.unit, spot:cur.spot, trade:cur.trade, text:text.trim()});
     save(); paintRows();
     buzz();
     flash("추가: "+text.trim());
+    return true;
   }
   function flash(msg){
     var el = $("heard");
@@ -567,13 +592,13 @@
     var rest = tokens.slice(used).join(" ");
     if(tags.length){ paintCtx(); paintSpots(); paintTrades(); }
     if(rest){
-      addRow(rest);
+      if(!addRow(rest)){ paintStat(); return; }
       $("heard").innerHTML = shown + (tags.length ? ' <span class="fix">' + esc(tags.join(" · ")) + '</span>' : "");
     } else if(tags.length){
       $("heard").innerHTML = shown + ' <span class="fix">' + esc(tags.join(" · ")) + '</span>';
       buzz();
     } else {
-      addRow(t);
+      if(!addRow(t)){ paintStat(); return; }
       $("heard").innerHTML = shown;
     }
     paintStat();
@@ -650,9 +675,9 @@
   $("undoBtn").onclick = function(){ var g = rows.pop(); save(); paintRows(); flash(g ? "취소: "+g.text : "취소할 것이 없습니다"); };
   $("unitGo").onclick = function(){ setUnit($("unitIn").value); };
   $("unitIn").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); setUnit(this.value); } });
-  $("addBtn").onclick = function(){ var el = $("textIn"); var f = fixWords(el.value); stat.fixed += f.changed; addRow(f.text); el.value=""; paintStat(); };
+  $("addBtn").onclick = function(){ var el = $("textIn"); var f = fixWords(el.value); stat.fixed += f.changed; if(addRow(f.text)){ el.value=""; save(); } paintStat(); };
   $("textIn").addEventListener("keydown", function(e){
-    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); $("addBtn").click(); }
+    if(e.key==="Enter" && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); $("addBtn").click(); }
   });
   $("copyBtn").onclick = function(){
     var text = tsv();
@@ -707,12 +732,16 @@
     document.documentElement.style.setProperty("--keyboard-inset", (v ? Math.max(0,innerHeight-v.height-v.offsetTop) : 0)+"px");
   }
   function focusActions(){
-    document.body.classList.toggle("editing", document.activeElement===$("textIn") || document.activeElement===$("addBtn"));
+    if(document.activeElement!==$("addBtn")) document.body.classList.toggle("editing", document.activeElement===$("textIn"));
     fitKeyboard();
   }
   document.addEventListener("focusin",focusActions);
   document.addEventListener("focusout",function(){ setTimeout(focusActions,0); });
   if(window.visualViewport){ visualViewport.addEventListener("resize",fitKeyboard); visualViewport.addEventListener("scroll",fitKeyboard); }
+  $("textIn").value = S.draft || "";
+  $("textIn").addEventListener("input",save);
+  document.addEventListener("visibilitychange",function(){ if(document.hidden) save(); });
+  window.addEventListener("pagehide",save);
   paintAll();
   $("diag").textContent = SR
     ? ("계속 듣기 지원: 예 · " + (navigator.userAgent.indexOf("iPhone")>=0 ? "아이폰 — 조용하면 스스로 멈출 수 있습니다" : "안드로이드·PC"))

@@ -44,3 +44,30 @@ test('R2: 390px layout fits and focused input keeps add action in view',async t=
   fs.mkdirSync(path.join(root,'.test-output'),{recursive:true});
   await page.screenshot({path:path.join(root,'.test-output/mobile.png'),fullPage:true});
 });
+
+async function selectUnit(page,unit='1503'){
+  await page.locator('#unitIn').fill(unit);await page.locator('#unitGo').click();
+}
+test('R3: missing unit preserves draft and reload; IME Enter cannot submit',async t=>{
+  const page=await pageFor(t);
+  await page.locator('#textIn').fill('벽면 보수');await page.locator('#addBtn').click();
+  assert.equal(await page.locator('#textIn').inputValue(),'벽면 보수');
+  assert.equal(await page.locator('#tb tr').count(),0);
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'unitIn');
+  await page.reload();assert.equal(await page.locator('#textIn').inputValue(),'벽면 보수');
+  await selectUnit(page);
+  await page.locator('#textIn').dispatchEvent('keydown',{key:'Enter',isComposing:true});
+  await page.locator('#textIn').dispatchEvent('keydown',{key:'Enter',keyCode:229});
+  assert.equal(await page.locator('#tb tr').count(),0);
+  await page.locator('#addBtn').click();
+  assert.equal(await page.locator('#tb tr').count(),1);
+  assert.equal(await page.locator('#textIn').inputValue(),'');
+  await page.reload();assert.equal(await page.locator('#tb tr').count(),1);
+});
+test('R3: storage failure stays visible while rows remain exportable in memory',async t=>{
+  const page=await pageFor(t,()=>{Storage.prototype.setItem=function(){throw new DOMException('full','QuotaExceededError');};});
+  await selectUnit(page);await page.locator('#textIn').fill('천장 보수');await page.locator('#addBtn').click();
+  assert.equal(await page.locator('#tb tr').count(),1);
+  assert.equal(await page.locator('#storageWarn').isVisible(),true);
+  assert.match(await page.locator('#storageWarn').textContent(),/저장되지/);
+});

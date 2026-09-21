@@ -171,7 +171,7 @@
     </div>
     <div class="tbl" style="margin-top:10px">
       <table id="tbl">
-        <thead><tr><th>동</th><th>코어</th><th>호수</th><th>위치</th><th>공종</th><th>내용</th><th></th></tr></thead>
+        <thead><tr><th>점검일</th><th>동</th><th>코어</th><th>호수</th><th>위치</th><th>공종</th><th>내용</th><th></th></tr></thead>
         <tbody id="tb"></tbody>
       </table>
     </div>
@@ -494,7 +494,7 @@
     });
     sorted.forEach(function(r){
       var tr = document.createElement("tr");
-      tr.innerHTML = '<td class="n">'+esc(r.dong)+'</td><td class="n">'+esc(r.core||"")+'</td>'+
+      tr.innerHTML = '<td class="n">'+esc(rowDate(r))+'</td><td class="n">'+esc(r.dong)+'</td><td class="n">'+esc(r.core||"")+'</td>'+
         '<td class="n">'+esc(r.unit)+'</td><td>'+esc(r.spot||"")+'</td><td>'+esc(r.trade||"")+'</td>'+
         '<td>'+esc(r.text)+'</td>';
       var td = document.createElement("td");
@@ -536,7 +536,7 @@
       return false;
     }
     $("inputWarn").hidden = true;
-    rows.push({dong:cur.dong, core:coreOf(cur.unit), unit:cur.unit, spot:cur.spot, trade:cur.trade, text:text.trim()});
+    rows.push({createdAt:new Date().toISOString(), dong:cur.dong, core:coreOf(cur.unit), unit:cur.unit, spot:cur.spot, trade:cur.trade, text:text.trim()});
     save(); paintRows();
     buzz();
     flash("추가: "+text.trim());
@@ -660,12 +660,15 @@
   function releaseAwake(){ try{ if(wake){ wake.release(); wake = null; } }catch(e){} }
 
   /* ---------- 내보내기 ---------- */
+  function rowDate(r){
+    if(!r.createdAt || !Number.isFinite(Date.parse(r.createdAt))) return "날짜 미상";
+    var d = new Date(r.createdAt);
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
   function tsv(){
     var head = ["점검일","동","코어","호수","위치","공종","내용"].join("\t");
-    var d = new Date();
-    var date = ("0"+(d.getFullYear()%100)).slice(-2)+"."+("0"+(d.getMonth()+1)).slice(-2)+"."+("0"+d.getDate()).slice(-2);
     var body = rows.map(function(r){
-      return [date, r.dong, r.core||"", r.unit, r.spot||"", r.trade||"", r.text].join("\t");
+      return [rowDate(r), r.dong, r.core||"", r.unit, r.spot||"", r.trade||"", r.text].join("\t");
     });
     return [head].concat(body).join("\n");
   }

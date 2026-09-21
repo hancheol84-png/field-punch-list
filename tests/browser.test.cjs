@@ -71,3 +71,20 @@ test('R3: storage failure stays visible while rows remain exportable in memory',
   assert.equal(await page.locator('#storageWarn').isVisible(),true);
   assert.match(await page.locator('#storageWarn').textContent(),/저장되지/);
 });
+
+test('R5: creation time persists and export keeps each row date; old rows stay unknown',async t=>{
+  const page=await pageFor(t,()=>{
+    localStorage.setItem('punchTest.v1',JSON.stringify({rows:[{dong:'101',unit:'1501',text:'기존 항목'}, {dong:'101',unit:'1401',text:'어제 항목',createdAt:new Date(Date.now()-86400000).toISOString()}]}));
+    Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copied=text;}}});
+  });
+  assert.match(await page.locator('#tb').textContent(),/날짜 미상/);
+  await page.locator('#copyBtn').click();
+  const text=await page.evaluate(()=>window.copied);
+  assert.match(text,/날짜 미상/);
+  const yesterday=await page.evaluate(()=>{const d=new Date(Date.now()-86400000);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');});
+  assert.ok(text.includes(yesterday));
+  await selectUnit(page);await page.locator('#textIn').fill('새 항목');await page.locator('#addBtn').click();
+  const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchTest.v1')).rows);
+  assert.ok(Number.isFinite(Date.parse(rows[2].createdAt)));
+  assert.equal(rows[0].createdAt,undefined);
+});

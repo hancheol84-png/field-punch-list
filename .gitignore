@@ -1,0 +1,12 @@
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.csv
+*.tsv
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.test-output/
+node_modules/

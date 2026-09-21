@@ -1,0 +1,692 @@
+<title>펀치리스트 현장 테스트</title>
+<style>
+  :root{
+    --bg:#EEF1F5; --card:#FFFFFF; --ink:#111A22; --ink2:#48555F; --ink3:#7C8894;
+    --line:#CFD7DF; --navy:#0F3557; --navy-ink:#FFFFFF; --soft:#E2EAF2;
+    --live:#B3541E; --live-soft:#FBE9DC; --ok:#1B6046; --ok-soft:#DEEFE6;
+    --warn:#8A5300; --warn-soft:#FAEEDA;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --sans:"Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0C1116; --card:#151D25; --ink:#E9EEF3; --ink2:#B4C0CB; --ink3:#82919D;
+      --line:#2A3641; --navy:#8FBCE0; --navy-ink:#0C1116; --soft:#1C2833;
+      --live:#F0A273; --live-soft:#2E1E14; --ok:#7CC8A4; --ok-soft:#13251D;
+      --warn:#E3B067; --warn-soft:#2A2114;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0C1116; --card:#151D25; --ink:#E9EEF3; --ink2:#B4C0CB; --ink3:#82919D;
+    --line:#2A3641; --navy:#8FBCE0; --navy-ink:#0C1116; --soft:#1C2833;
+    --live:#F0A273; --live-soft:#2E1E14; --ok:#7CC8A4; --ok-soft:#13251D;
+    --warn:#E3B067; --warn-soft:#2A2114;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+  .wrap{max-width:560px;margin:0 auto;padding-inline:14px;padding-block:14px 40px;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+  h1{font-size:17px;margin:0;font-weight:700}
+  .sub{font-size:12.5px;color:var(--ink3);margin:2px 0 0}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{font-family:inherit;font-size:15px;cursor:pointer}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:10px 14px;min-height:44px}
+  .btn:active{transform:translateY(1px)}
+  .btn.pri{background:var(--navy);border-color:var(--navy);color:var(--navy-ink);font-weight:700}
+  .btn.wide{flex:1}
+  .btn.sm{padding:7px 11px;min-height:36px;font-size:13.5px}
+  .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:9px 14px;min-height:42px}
+  .chip.on{background:var(--navy);border-color:var(--navy);color:var(--navy-ink);font-weight:700}
+  .chip.add{border-style:dashed;color:var(--ink3)}
+  input,textarea,select{font-family:inherit;font-size:16px;color:var(--ink);background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:11px 12px;width:100%}
+  textarea{min-height:64px;resize:vertical}
+  label.f{display:block;font-size:12.5px;color:var(--ink3);margin:0 0 5px}
+
+  /* 상단 고정 — 지금 어디를 점검 중인지 */
+  .ctx{position:sticky;top:0;z-index:5;background:var(--navy);color:var(--navy-ink);border-radius:10px;padding:12px 14px}
+  .ctx .big{font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:.02em}
+  .ctx .line2{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:13.5px;opacity:.95}
+  .ctx .pill{background:rgba(255,255,255,.16);border-radius:999px;padding:3px 10px}
+  :root[data-theme="dark"] .ctx .pill,:root:not([data-theme="light"]) .ctx .pill{background:rgba(0,0,0,.18)}
+
+  .mic{display:flex;align-items:center;gap:12px}
+  .mic .dot{width:12px;height:12px;border-radius:50%;background:var(--line);flex:none}
+  .mic.live .dot{background:var(--live);animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.mic.live .dot{animation:none}}
+  .heard{font-size:13.5px;color:var(--ink2);min-height:20px;margin-top:8px;word-break:break-all}
+  .fix{display:inline-block;background:var(--warn-soft);color:var(--warn);border-radius:6px;padding:1px 7px;font-size:12.5px;margin-left:6px}
+
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  .pad button{min-height:52px;font-family:var(--mono);font-size:20px;font-weight:600}
+  .pad .act{font-family:var(--sans);font-size:14px;font-weight:500}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--soft);font-size:11.5px;color:var(--ink2);font-weight:700}
+  td.n{font-family:var(--mono);white-space:nowrap}
+  .tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+  .del{border:none;background:none;color:var(--ink3);font-size:18px;line-height:1;padding:2px 4px;cursor:pointer}
+
+  .stat{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .stat div{background:var(--soft);border-radius:8px;padding:9px 11px}
+  .stat b{display:block;font-family:var(--mono);font-size:18px;font-weight:600}
+  .stat span{font-size:11.5px;color:var(--ink3)}
+  .note{font-size:12.5px;color:var(--ink3)}
+  .bad{background:var(--live-soft);color:var(--live);border-radius:8px;padding:10px 12px;font-size:13px}
+  .good{background:var(--ok-soft);color:var(--ok);border-radius:8px;padding:10px 12px;font-size:13px}
+  details summary{cursor:pointer;font-weight:700;font-size:14px}
+  details[open] summary{margin-bottom:10px}
+  .sec-t{font-size:12px;color:var(--ink3);letter-spacing:.06em;margin:0 0 8px;font-weight:700}
+</style>
+
+<div class="wrap">
+
+  <div class="card" style="padding:12px 14px">
+    <h1>펀치리스트 현장 테스트</h1>
+    <p class="sub">말하거나 눌러서 한 줄씩 쌓고, 사무실에서 엑셀로 옮깁니다. 시험용이며 서버에 저장되지 않습니다.</p>
+  </div>
+
+  <div class="ctx" id="ctx">
+    <div class="big" id="ctxBig">동·호수를 정하세요</div>
+    <div class="line2" id="ctxSub"></div>
+  </div>
+
+  <!-- 음성 -->
+  <div class="card">
+    <div class="mic" id="micBox">
+      <span class="dot"></span>
+      <button class="btn pri wide" id="micBtn">마이크 켜기</button>
+      <button class="btn sm" id="undoBtn">방금 취소</button>
+    </div>
+    <div class="heard" id="heard">마이크를 켜고 <b>“침실3”</b>, <b>“골조할석”</b>, <b>“우측벽 상부 턱짐 그라인딩 필요”</b> 처럼 말해 보세요.</div>
+    <div id="micWarn"></div>
+  </div>
+
+  <!-- 세대 -->
+  <div class="card">
+    <p class="sec-t">세대</p>
+    <div class="row">
+      <span class="note">동</span>
+      <div class="row" id="dongs"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <input id="unitIn" inputmode="numeric" placeholder="호수 (예: 1503)" style="flex:1;font-family:var(--mono);font-size:19px;text-align:center">
+      <button class="btn pri" id="unitGo">이동</button>
+    </div>
+    <div class="row" id="nextUnits" style="margin-top:8px"></div>
+    <div class="pad" id="pad"></div>
+  </div>
+
+  <!-- 위치 · 공종 -->
+  <div class="card">
+    <p class="sec-t">위치</p>
+    <div class="row" id="spots"></div>
+    <p class="sec-t" style="margin-top:14px">공종</p>
+    <div class="row" id="trades"></div>
+  </div>
+
+  <!-- 내용 -->
+  <div class="card">
+    <p class="sec-t">내용 — 자주 쓰는 문구</p>
+    <div class="row" id="phrases"></div>
+    <div style="margin-top:12px">
+      <label class="f" for="textIn">직접 입력 (자판 마이크로 말해도 됩니다)</label>
+      <textarea id="textIn" placeholder="예) 우측벽 좌측하단 골조 턱짐 할석미장"></textarea>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn pri wide" id="addBtn">한 줄 추가</button>
+    </div>
+  </div>
+
+  <!-- 목록 -->
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <p class="sec-t" style="margin:0">쌓인 목록 <span id="cnt" class="note"></span></p>
+      <div class="row">
+        <button class="btn sm" id="copyBtn">엑셀로 복사</button>
+        <button class="btn sm" id="clearBtn">비우기</button>
+      </div>
+    </div>
+    <div class="tbl" style="margin-top:10px">
+      <table id="tbl">
+        <thead><tr><th>동</th><th>코어</th><th>호수</th><th>위치</th><th>공종</th><th>내용</th><th></th></tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:8px">코어 하나를 위층부터 내려오는 순서로 정렬해 보여 줍니다. “엑셀로 복사”를 누르고 엑셀에 붙여넣기(Ctrl+V) 하세요.</p>
+  </div>
+
+  <!-- 세팅 -->
+  <div class="card">
+    <details id="setup">
+      <summary>현장 세팅</summary>
+      <div style="display:grid;gap:12px">
+        <div><label class="f" for="siteIn">현장명</label><input id="siteIn"></div>
+        <div><label class="f" for="dongIn">동 (쉼표로 구분)</label><input id="dongIn"></div>
+        <div>
+          <label class="f" for="coreIn">코어 구성 — 코어=호수 끝 두 자리</label>
+          <input id="coreIn" placeholder="1코어=01,02; 2코어=03,04">
+          <p class="note" style="margin:6px 0 0">호수를 넣으면 코어가 저절로 붙습니다. 1503 → 03 → 2코어</p>
+        </div>
+        <div><label class="f" for="spotIn">위치 버튼</label><input id="spotIn"></div>
+        <div><label class="f" for="tradeIn">공종 버튼</label><input id="tradeIn"></div>
+        <div><label class="f" for="phraseIn">자주 쓰는 문구</label><input id="phraseIn"></div>
+        <div class="row"><button class="btn pri" id="saveSet">세팅 저장</button><button class="btn" id="resetSet">처음 값으로</button></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- 진단 -->
+  <div class="card">
+    <details>
+      <summary>음성 인식 상태 (테스트용)</summary>
+      <div class="stat" style="margin-top:10px">
+        <div><b id="sUp">0분</b><span>마이크 켠 시간</span></div>
+        <div><b id="sRestart">0회</b><span>끊겨서 다시 켠 횟수</span></div>
+        <div><b id="sHeard">0건</b><span>알아들은 말</span></div>
+        <div><b id="sFix">0건</b><span>오타 바로잡음</span></div>
+      </div>
+      <p class="note" id="diag" style="margin-top:10px"></p>
+      <p class="note">현장에서 30분쯤 써 보시고 이 숫자를 알려 주세요. 끊김이 잦으면 버튼·타이핑을 주력으로 설계를 바꾸겠습니다.</p>
+    </details>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var LS = "punchTest.v1";
+  var DEF = {
+    site: "샘플현장",
+    dongs: ["101", "102", "103"],
+    cores: "1코어=01,02; 2코어=03,04",
+    spots: ["현관","거실","주방","침실1","침실2","침실3","드레스룸","팬트리룸","부부욕실","공용욕실","대피공간","발코니1","발코니2","실외기실","복도","계단실창"],
+    trades: ["골조할석","골조미장","골조견출","석고","경량석고","합지","CRC","방수","타일","창호","도배","설비"],
+    phrases: ["본틀 옆 견출 보수","가틀 옆 골조벽 단차 할/G","가틀 옆 골조벽 단차 미장","현관 문틀 주변 전체 틈새(즉시 처리)","대피공간 문틀 주변 전체 틈새(즉시 처리)","붙박이장 틈새 보수","주방가구 날개벽 틈새","계단실 AL창호 개구부 하부 미장","대피창 주위 핀홀 보수"]
+  };
+  var MISHEARD = {
+    "견출":["겸출","경출","견줄"], "할석":["할썩","활석","할서"], "면귀":["면기","면키","면괴"],
+    "가틀":["가톨","가들","가툴"], "본틀":["본들","본툴","본돌"], "사춤":["사춘","사총","싸춤"],
+    "핀홀":["핀홈","핀혹","핑홀"], "단차":["단자","단창","당차"], "턱짐":["덕짐","턱징","턱집"],
+    "틈새":["듬새","틈세","틈쌔"], "붙박이장":["부박이장","불박이장"], "날개벽":["날게벽","날개백"],
+    "골조벽":["곧조벽","골초벽"], "개구부":["게구부","계구부"], "드레스룸":["드래스룸","드레쓰룸"],
+    "그라인딩":["그라인더","글라인딩","그라인등"], "할석미장":["할미","할 미"], "석고":["서고","석꼬"],
+    "몰탈":["모르탈","몰딸"], "결로":["겨로","결노"], "곰보":["곱보","곰부"], "젠다이":["전다이","잰다이"],
+    "즉시처리":["직시처리"], "수평불량":["수편불량"], "개폐불량":["개패불량"]
+  };
+  // 버튼에 없어도 공종·위치로 알아듣는 말 (부른 그대로 쓰고, 버튼에도 더해 둔다)
+  var TRADE_VOCAB = ["골조","골조할석","골조미장","골조견출","할석","할석미장","미장","견출","그라인딩",
+    "사춤","방통","면정리","면귀","석고","경량석고","경량","CRC","합지","실크","도배","몰딩","단열",
+    "내장","조적","ALC","방수","타일","석재","창호","AL창호","목창호","도장","코킹","실리콘","가구",
+    "마루","설비","전기","소방","잡공사","청소","줄눈","퍼티","빠데","견출보수","방화문","금속"];
+  var SPOT_VOCAB = ["현관","전실","거실","주방","식당","복도","안방","부부침실","침실1","침실2","침실3",
+    "침실4","드레스룸","팬트리룸","팬트리","부부욕실","공용욕실","욕실1","욕실2","화장실","발코니1",
+    "발코니2","발코니3","실외기실","대피공간","세탁실","다용도실","보일러실","창고","계단실","계단실창",
+    "E.V홀","복도창","옥상","지하주차장","기계실","전기실"];
+
+  var HANGUL_NUM = {"영":0,"공":0,"하나":1,"한":1,"일":1,"둘":2,"두":2,"이":2,"셋":3,"세":3,"삼":3,
+    "넷":4,"네":4,"사":4,"다섯":5,"오":5,"여섯":6,"육":6,"일곱":7,"칠":7,"여덟":8,"팔":8,"아홉":9,"구":9,"열":10,"십":10};
+
+  var S = load();
+  var rows = S.rows || [];
+  var cur = {dong: S.dongs[0], unit:"", spot:"", trade:""};
+  var stat = {up:0, restarts:0, heard:0, fixed:0};
+  var rec = null, listening = false, startedAt = 0, tick = null;
+
+  function $(id){ return document.getElementById(id); }
+  function load(){
+    var base = JSON.parse(JSON.stringify(DEF));
+    try{ var raw = localStorage.getItem(LS); if(raw){ var o = JSON.parse(raw); for(var k in o) base[k] = o[k]; } }catch(e){}
+    return base;
+  }
+  function save(){
+    S.rows = rows;
+    try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){}
+  }
+
+  /* ---------- 한글 자모 비교 : "침살3" 을 "침실3" 으로 붙이기 ---------- */
+  var CHO="ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ", JUNG="ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ",
+      JONG="\u0000ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
+  function jamo(s){
+    var out = "";
+    for(var i=0;i<s.length;i++){
+      var c = s.charCodeAt(i);
+      if(c>=0xAC00 && c<=0xD7A3){
+        var n = c-0xAC00;
+        out += CHO[Math.floor(n/588)] + JUNG[Math.floor((n%588)/28)] + (n%28 ? JONG[n%28] : "");
+      } else out += s[i];
+    }
+    return out;
+  }
+  function dist(a,b){
+    var m=a.length, n=b.length, prev=[], curr=[], i, j;
+    for(j=0;j<=n;j++) prev[j]=j;
+    for(i=1;i<=m;i++){
+      curr[0]=i;
+      for(j=1;j<=n;j++){
+        var c = a[i-1]===b[j-1] ? 0 : 1;
+        curr[j] = Math.min(prev[j]+1, curr[j-1]+1, prev[j-1]+c);
+      }
+      prev = curr.slice();
+    }
+    return prev[n];
+  }
+  // 목록·어휘집에 그대로 있는 말인지
+  function has(list, w){
+    for(var i=0;i<list.length;i++) if(list[i].replace(/\s+/g,"")===w) return list[i];
+    return null;
+  }
+  // 소리가 비슷한 말 찾기 — "침살3" 을 "침실3" 으로
+  function near(w, list){
+    var jw = jamo(w), best=null, bd=99;
+    for(var k=0;k<list.length;k++){
+      var d = dist(jw, jamo(list[k].replace(/\s+/g,"")));
+      if(d<bd){ bd=d; best=list[k]; }
+    }
+    var limit = jw.length<=4 ? 1 : (jw.length<=8 ? 2 : 3);
+    return (best && bd<=limit) ? best : null;
+  }
+  // 아는 말을 품고 있는 새 말인지 — "본미장"·"골조미장" 안의 "미장"
+  function holds(w, lists){
+    for(var i=0;i<lists.length;i++){
+      var list = lists[i];
+      for(var k=0;k<list.length;k++){
+        var kk = list[k].replace(/\s+/g,"");
+        if(kk.length>=2 && w.length>kk.length && w.length<=8 &&
+           (w.indexOf(kk)===0 || w.lastIndexOf(kk)===w.length-kk.length)) return true;
+      }
+    }
+    return false;
+  }
+  // 말한 그대로 넣는 것이 원칙. 잘못 들은 것만 아는 말로 고친다.
+  function pick(word, list, vocab, onAdd, solo){
+    var w = word.replace(/\s+/g,"");
+    if(!w) return null;
+    var exact = has(list, w) || has(vocab, w);
+    if(exact) return add(list, exact, onAdd, false);
+    var fixed = near(w, list) || near(w, vocab);
+    if(fixed) return add(list, fixed, onAdd, true);
+    if(solo && holds(w, [list, vocab])) return add(list, w, onAdd, false);
+    return null;
+  }
+  function add(list, value, onAdd, fixed){
+    var isNew = !has(list, value.replace(/\s+/g,""));
+    if(isNew){ list.push(value); save(); if(onAdd) onAdd(); }
+    return {hit:value, fixed:fixed, added:isNew};
+  }
+
+  function fixWords(text){
+    var out = text, changed = 0;
+    for(var right in MISHEARD){
+      MISHEARD[right].forEach(function(wrong){
+        if(out.indexOf(wrong)>=0){ out = out.split(wrong).join(right); changed++; }
+      });
+    }
+    // 치수 : "팔 미리" · "8밀리" → 8mm
+    out = out.replace(/([0-9]+)\s*(미리|밀리|미리미터|mm)/g, "$1mm");
+    out = out.replace(/([가-힣]+)\s*(미리|밀리)/g, function(all, word){
+      return (HANGUL_NUM[word]!=null) ? HANGUL_NUM[word]+"mm" : all;
+    });
+    return {text: out, changed: changed};
+  }
+  function toNumber(word){
+    if(/^\d+$/.test(word)) return parseInt(word,10);
+    return HANGUL_NUM[word]!=null ? HANGUL_NUM[word] : null;
+  }
+
+  /* ---------- 코어 배정 ---------- */
+  function coreTable(){
+    var t = {};
+    String(S.cores||"").split(";").forEach(function(part){
+      var kv = part.split("=");
+      if(kv.length<2) return;
+      var core = kv[0].trim();
+      kv[1].split(",").forEach(function(ln){
+        var n = parseInt(String(ln).replace(/\D/g,""),10);
+        if(!isNaN(n)) t[("0"+n).slice(-2)] = core;
+      });
+    });
+    return t;
+  }
+  function coreOf(unit){
+    var n = parseInt(String(unit).replace(/\D/g,""),10);
+    if(isNaN(n)) return "";
+    var line = ("0"+(n>=100 ? n%100 : n)).slice(-2);
+    return coreTable()[line] || "";
+  }
+  function floorOf(unit){
+    var n = parseInt(String(unit).replace(/\D/g,""),10);
+    return isNaN(n) ? 0 : (n>=100 ? Math.floor(n/100) : n);
+  }
+
+  /* ---------- 화면 ---------- */
+  function paintCtx(){
+    $("ctxBig").textContent = cur.unit ? (cur.dong+"동 "+cur.unit) : (cur.dong+"동 — 호수를 정하세요");
+    var pills = [];
+    var core = coreOf(cur.unit);
+    if(core) pills.push(core);
+    if(cur.spot) pills.push(cur.spot);
+    if(cur.trade) pills.push(cur.trade);
+    $("ctxSub").innerHTML = pills.length
+      ? pills.map(function(p){ return '<span class="pill">'+esc(p)+'</span>'; }).join("")
+      : '<span class="pill">위치·공종을 고르면 계속 유지됩니다</span>';
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]; }); }
+
+  function chips(host, list, activeVal, onPick, addLabel, onAdd){
+    host.innerHTML = "";
+    list.forEach(function(v){
+      var b = document.createElement("button");
+      b.className = "chip" + (v===activeVal ? " on" : "");
+      b.textContent = v;
+      b.onclick = function(){ onPick(v); };
+      host.appendChild(b);
+    });
+    if(addLabel){
+      var a = document.createElement("button");
+      a.className = "chip add";
+      a.textContent = addLabel;
+      a.onclick = onAdd;
+      host.appendChild(a);
+    }
+  }
+
+  function paintDongs(){
+    chips($("dongs"), S.dongs, cur.dong, function(v){ cur.dong=v; paintCtx(); paintDongs(); }, "＋", function(){
+      var v = prompt("동 번호"); if(v){ S.dongs.push(v.trim()); cur.dong=v.trim(); save(); paintDongs(); paintCtx(); }
+    });
+  }
+  function paintSpots(){
+    chips($("spots"), S.spots, cur.spot, function(v){ cur.spot = (cur.spot===v ? "" : v); paintCtx(); paintSpots(); },
+      "＋ 위치", function(){ var v=prompt("위치 이름"); if(v){ S.spots.push(v.trim()); cur.spot=v.trim(); save(); paintSpots(); paintCtx(); } });
+  }
+  function paintTrades(){
+    chips($("trades"), S.trades, cur.trade, function(v){ cur.trade = (cur.trade===v ? "" : v); paintCtx(); paintTrades(); },
+      "＋ 공종", function(){ var v=prompt("공종 이름"); if(v){ S.trades.push(v.trim()); cur.trade=v.trim(); save(); paintTrades(); paintCtx(); } });
+  }
+  function paintPhrases(){
+    var host = $("phrases");
+    host.innerHTML = "";
+    S.phrases.forEach(function(p){
+      var b = document.createElement("button");
+      b.className = "chip";
+      b.textContent = p;
+      b.onclick = function(){ addRow(p); };
+      host.appendChild(b);
+    });
+  }
+  function paintNext(){
+    var host = $("nextUnits");
+    host.innerHTML = "";
+    if(!cur.unit){ return; }
+    var n = parseInt(cur.unit,10);
+    if(isNaN(n)) return;
+    var cands = [n-100, n+1, n-99].filter(function(v){ return v>0; });
+    var label = ["한 층 아래","옆 세대","아래 옆"];
+    cands.forEach(function(v,i){
+      var b = document.createElement("button");
+      b.className = "btn sm";
+      b.innerHTML = '<b style="font-family:var(--mono)">'+v+'</b> <span style="color:var(--ink3);font-size:12px">'+label[i]+'</span>';
+      b.onclick = function(){ setUnit(String(v)); };
+      host.appendChild(b);
+    });
+  }
+  function paintPad(){
+    var host = $("pad");
+    host.innerHTML = "";
+    ["1","2","3","4","5","6","7","8","9","지움","0","이동"].forEach(function(k){
+      var b = document.createElement("button");
+      b.className = "btn" + (k==="지움"||k==="이동" ? " act" : "");
+      if(k==="이동") b.className += " pri";
+      b.textContent = k;
+      b.onclick = function(){
+        var el = $("unitIn");
+        if(k==="지움") el.value = el.value.slice(0,-1);
+        else if(k==="이동") setUnit(el.value);
+        else el.value += k;
+      };
+      host.appendChild(b);
+    });
+  }
+  function paintRows(){
+    var tb = $("tb");
+    tb.innerHTML = "";
+    var sorted = rows.slice().sort(function(a,b){
+      if(a.dong!==b.dong) return a.dong<b.dong ? -1 : 1;
+      var ca = a.core||"", cb = b.core||"";
+      if(ca!==cb) return ca<cb ? -1 : 1;
+      var fa = floorOf(a.unit), fb = floorOf(b.unit);
+      if(fa!==fb) return fb-fa;
+      return (parseInt(a.unit,10)||0) - (parseInt(b.unit,10)||0);
+    });
+    sorted.forEach(function(r){
+      var tr = document.createElement("tr");
+      tr.innerHTML = '<td class="n">'+esc(r.dong)+'</td><td class="n">'+esc(r.core||"")+'</td>'+
+        '<td class="n">'+esc(r.unit)+'</td><td>'+esc(r.spot||"")+'</td><td>'+esc(r.trade||"")+'</td>'+
+        '<td>'+esc(r.text)+'</td>';
+      var td = document.createElement("td");
+      var x = document.createElement("button");
+      x.className = "del"; x.innerHTML = "&times;"; x.title = "지우기";
+      x.onclick = function(){ rows.splice(rows.indexOf(r),1); save(); paintRows(); };
+      td.appendChild(x); tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    $("cnt").textContent = rows.length ? rows.length+"건" : "";
+  }
+  function paintStat(){
+    $("sUp").textContent = Math.floor(stat.up/60)+"분 "+(stat.up%60)+"초";
+    $("sRestart").textContent = stat.restarts+"회";
+    $("sHeard").textContent = stat.heard+"건";
+    $("sFix").textContent = stat.fixed+"건";
+  }
+
+  /* ---------- 입력 ---------- */
+  function setUnit(v){
+    var n = String(v||"").replace(/\D/g,"");
+    if(!n){ return; }
+    cur.unit = n;
+    $("unitIn").value = "";
+    paintCtx(); paintNext();
+    say(cur.dong+"동 "+n+"호");
+  }
+  function addRow(text){
+    if(!text || !text.trim()) return;
+    if(!cur.unit){ flash("먼저 호수를 정하세요"); return; }
+    rows.push({dong:cur.dong, core:coreOf(cur.unit), unit:cur.unit, spot:cur.spot, trade:cur.trade, text:text.trim()});
+    save(); paintRows();
+    buzz();
+    flash("추가: "+text.trim());
+  }
+  function flash(msg){
+    var el = $("heard");
+    el.innerHTML = esc(msg);
+  }
+  function buzz(){ try{ if(navigator.vibrate) navigator.vibrate(35); }catch(e){} }
+
+  /* ---------- 말 해석 ---------- */
+  function handle(said){
+    stat.heard++;
+    var raw = said.trim();
+    if(!raw) return;
+    var fixed = fixWords(raw);
+    if(fixed.changed) stat.fixed += fixed.changed;
+    var t = fixed.text.trim();
+    var shown = (t!==raw) ? esc(raw)+' <span class="fix">→ '+esc(t)+'</span>' : esc(t);
+
+    // 취소
+    if(/^(취소|방금 ?취소|지워|삭제)$/.test(t.replace(/\s+/g,""))){
+      var gone = rows.pop(); save(); paintRows();
+      $("heard").innerHTML = gone ? ("취소: "+esc(gone.text)) : "취소할 것이 없습니다";
+      paintStat(); return;
+    }
+    // 동
+    var mDong = t.match(/(\d{2,3})\s*동/);
+    if(mDong){
+      cur.dong = mDong[1];
+      if(S.dongs.indexOf(cur.dong)<0){ S.dongs.push(cur.dong); save(); paintDongs(); }
+      var mUnit = t.match(/(\d{3,4})\s*호/);
+      if(mUnit) { setUnit(mUnit[1]); }
+      paintCtx(); paintDongs();
+      $("heard").innerHTML = shown; paintStat(); return;
+    }
+    // 호수
+    var mU = t.match(/^(\d{3,4})\s*(호)?$/);
+    if(mU){ setUnit(mU[1]); $("heard").innerHTML = shown; paintStat(); return; }
+    // 앞에서부터 낱말을 떼어 위치·공종을 잡고, 남은 말을 내용으로 본다
+    var tokens = t.split(/\s+/).filter(Boolean);
+    var solo = tokens.length === 1;
+    var tags = [], used = 0;
+    for(var i=0;i<tokens.length && i<2;i++){
+      var w = tokens[i];
+      var sp = pick(w, S.spots, SPOT_VOCAB, paintSpots, solo);
+      if(sp){ cur.spot = sp.hit; tags.push("위치 " + sp.hit + (sp.added ? " (새로 추가)" : "")); used++; continue; }
+      var tr = pick(w, S.trades, TRADE_VOCAB, paintTrades, solo);
+      if(tr){ cur.trade = tr.hit; tags.push("공종 " + tr.hit + (tr.added ? " (새로 추가)" : "")); used++; continue; }
+      break;
+    }
+    var rest = tokens.slice(used).join(" ");
+    if(tags.length){ paintCtx(); paintSpots(); paintTrades(); }
+    if(rest){
+      addRow(rest);
+      $("heard").innerHTML = shown + (tags.length ? ' <span class="fix">' + esc(tags.join(" · ")) + '</span>' : "");
+    } else if(tags.length){
+      $("heard").innerHTML = shown + ' <span class="fix">' + esc(tags.join(" · ")) + '</span>';
+      buzz();
+    } else {
+      addRow(t);
+      $("heard").innerHTML = shown;
+    }
+    paintStat();
+  }
+
+  function say(msg){ $("heard").textContent = msg; }
+
+  /* ---------- 음성 인식 ---------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function startMic(){
+    if(!SR){ $("micWarn").innerHTML = '<div class="bad">이 브라우저는 계속 듣기를 지원하지 않습니다. 아래 <b>직접 입력</b> 칸을 누르고 <b>자판의 마이크</b>로 말해 보세요.</div>'; return; }
+    try{
+      rec = new SR();
+      rec.lang = "ko-KR";
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.onresult = function(e){
+        for(var i=e.resultIndex;i<e.results.length;i++){
+          var r = e.results[i];
+          if(r.isFinal) handle(r[0].transcript);
+          else $("heard").textContent = "… " + r[0].transcript;
+        }
+      };
+      rec.onerror = function(e){
+        $("diag").textContent = "마지막 오류: " + e.error + " (" + new Date().toLocaleTimeString() + ")";
+        if(e.error==="not-allowed" || e.error==="service-not-allowed"){
+          $("micWarn").innerHTML = '<div class="bad">마이크 사용이 막혀 있습니다. 브라우저 주소창의 자물쇠에서 마이크를 허용하거나, 자판 마이크로 입력해 주세요.</div>';
+          stopMic();
+        }
+      };
+      rec.onend = function(){
+        if(listening){ stat.restarts++; paintStat(); try{ rec.start(); }catch(e){} }
+      };
+      rec.start();
+      listening = true;
+      startedAt = Date.now();
+      tick = setInterval(function(){ stat.up = Math.floor((Date.now()-startedAt)/1000); paintStat(); }, 1000);
+      $("micBox").classList.add("live");
+      $("micBtn").textContent = "마이크 끄기";
+      $("micWarn").innerHTML = '<div class="good">듣고 있습니다. 화면을 보지 않아도 한 줄 들어갈 때마다 짧게 진동합니다.</div>';
+      keepAwake();
+    }catch(err){
+      $("micWarn").innerHTML = '<div class="bad">마이크를 켜지 못했습니다: '+esc(err.message||err)+'</div>';
+    }
+  }
+  function stopMic(){
+    listening = false;
+    if(tick){ clearInterval(tick); tick = null; }
+    try{ if(rec) rec.stop(); }catch(e){}
+    $("micBox").classList.remove("live");
+    $("micBtn").textContent = "마이크 켜기";
+    releaseAwake();
+  }
+  var wake = null;
+  function keepAwake(){
+    try{ if(navigator.wakeLock && navigator.wakeLock.request)
+      navigator.wakeLock.request("screen").then(function(w){ wake = w; }).catch(function(){}); }catch(e){}
+  }
+  function releaseAwake(){ try{ if(wake){ wake.release(); wake = null; } }catch(e){} }
+
+  /* ---------- 내보내기 ---------- */
+  function tsv(){
+    var head = ["점검일","동","코어","호수","위치","공종","내용"].join("\t");
+    var d = new Date();
+    var date = ("0"+(d.getFullYear()%100)).slice(-2)+"."+("0"+(d.getMonth()+1)).slice(-2)+"."+("0"+d.getDate()).slice(-2);
+    var body = rows.map(function(r){
+      return [date, r.dong, r.core||"", r.unit, r.spot||"", r.trade||"", r.text].join("\t");
+    });
+    return [head].concat(body).join("\n");
+  }
+
+  /* ---------- 붙이기 ---------- */
+  $("micBtn").onclick = function(){ listening ? stopMic() : startMic(); };
+  $("undoBtn").onclick = function(){ var g = rows.pop(); save(); paintRows(); flash(g ? "취소: "+g.text : "취소할 것이 없습니다"); };
+  $("unitGo").onclick = function(){ setUnit($("unitIn").value); };
+  $("unitIn").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); setUnit(this.value); } });
+  $("addBtn").onclick = function(){ var el = $("textIn"); var f = fixWords(el.value); stat.fixed += f.changed; addRow(f.text); el.value=""; paintStat(); };
+  $("textIn").addEventListener("keydown", function(e){
+    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); $("addBtn").click(); }
+  });
+  $("copyBtn").onclick = function(){
+    var text = tsv();
+    var done = function(){ flash("복사했습니다. 엑셀에서 붙여넣기 하세요."); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, function(){ fallback(text, done); });
+    } else fallback(text, done);
+  };
+  function fallback(text, done){
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); done(); }catch(e){ alert(text); }
+    document.body.removeChild(ta);
+  }
+  $("clearBtn").onclick = function(){
+    if(!rows.length) return;
+    if(confirm("쌓인 "+rows.length+"건을 모두 지울까요?")){ rows = []; save(); paintRows(); }
+  };
+  $("saveSet").onclick = function(){
+    S.site = $("siteIn").value.trim() || S.site;
+    S.dongs = $("dongIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+    S.cores = $("coreIn").value.trim();
+    S.spots = $("spotIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+    S.trades = $("tradeIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+    S.phrases = $("phraseIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+    if(S.dongs.indexOf(cur.dong)<0) cur.dong = S.dongs[0] || cur.dong;
+    save(); paintAll();
+    $("setup").open = false;
+  };
+  $("resetSet").onclick = function(){
+    if(!confirm("세팅을 처음 값으로 되돌릴까요? (쌓인 목록은 그대로)")) return;
+    var keep = rows;
+    S = JSON.parse(JSON.stringify(DEF)); rows = keep; save(); paintAll();
+  };
+
+  function paintSetupFields(){
+    $("siteIn").value = S.site;
+    $("dongIn").value = S.dongs.join(", ");
+    $("coreIn").value = S.cores;
+    $("spotIn").value = S.spots.join(", ");
+    $("tradeIn").value = S.trades.join(", ");
+    $("phraseIn").value = S.phrases.join(", ");
+  }
+  function paintAll(){
+    paintDongs(); paintSpots(); paintTrades(); paintPhrases();
+    paintPad(); paintNext(); paintRows(); paintCtx(); paintStat(); paintSetupFields();
+  }
+
+  paintAll();
+  $("diag").textContent = SR
+    ? ("계속 듣기 지원: 예 · " + (navigator.userAgent.indexOf("iPhone")>=0 ? "아이폰 — 조용하면 스스로 멈출 수 있습니다" : "안드로이드·PC"))
+    : "계속 듣기 지원: 아니오 — 자판 마이크로 입력하세요";
+})();
+</script>

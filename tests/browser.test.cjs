@@ -23,11 +23,12 @@ before(async () => {
   browser=process.env.TEST_CDP_URL ? await chromium.connectOverCDP(process.env.TEST_CDP_URL) : await chromium.launch({executablePath:process.env.CHROME_PATH || path.join(process.env.PROGRAMFILES,'Google/Chrome/Application/chrome.exe'),headless:true});
 });
 after(async()=>{await browser?.close();await new Promise(r=>server?.close(r));});
-async function pageFor(t, init){
+async function pageFor(t, init, options={}){
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,deviceScaleFactor:1,locale:'ko-KR',timezoneId:'Asia/Seoul'});
   t.after(()=>context.close());
   if(init) await context.addInitScript(init);
   const page=await context.newPage();
+  if(options.clock) await page.clock.install({time:new Date(options.clock)});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   t.after(()=>assert.deepEqual(errors,[]));
   await page.goto(origin);
@@ -106,4 +107,23 @@ test('R4: browser downloads a real XLSX and failed clipboard shows selectable fa
   await page.locator('#copyFallback').waitFor({state:'visible'});
   assert.match(await page.locator('#heard').textContent(),/실패/);
   assert.match(await page.locator('#copyText').inputValue(),/'=1\+1/);
+});
+
+test('R6: seven-day boundary, 3/1 day warning, unknown dates and download marker',async t=>{
+ const page=await pageFor(t,()=>{
+   const age=n=>new Date(Date.now()-n*86400000).toISOString();
+   localStorage.setItem('punchTest.v1',JSON.stringify({rows:[
+    {dong:'101',unit:'1501',text:'만료',createdAt:age(7)},
+    {dong:'101',unit:'1502',text:'일일',createdAt:age(6)},
+    {dong:'101',unit:'1503',text:'삼일',createdAt:age(4)},
+    {dong:'101',unit:'1504',text:'미상'}]}));
+ },{clock:'2026-09-22T03:00:00Z'});
+ assert.equal(await page.locator('#tb tr').count(),3);
+ const warning=await page.locator('#retentionWarn').textContent();
+ assert.match(warning,/1건이 1일/);assert.match(warning,/1건이 3일/);assert.match(warning,/날짜 미상 1건/);
+ const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
+ assert.match(await page.locator('#tb').textContent(),/요청 2026-09-22/);
+ await page.clock.fastForward(86400000);
+ assert.equal(await page.locator('#tb tr').count(),2);
+ assert.match(await page.locator('#tb').textContent(),/미상/);
 });

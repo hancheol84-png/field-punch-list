@@ -1,4 +1,10 @@
-<title>펀치리스트 현장 테스트</title>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F3557">
+<title>현장 펀치리스트</title>
 <style>
   :root{
     --bg:#EEF1F5; --card:#FFFFFF; --ink:#111A22; --ink2:#48555F; --ink3:#7C8894;
@@ -79,12 +85,24 @@
   details summary{cursor:pointer;font-weight:700;font-size:14px}
   details[open] summary{margin-bottom:10px}
   .sec-t{font-size:12px;color:var(--ink3);letter-spacing:.06em;margin:0 0 8px;font-weight:700}
+  .wrap{padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-top:max(14px,env(safe-area-inset-top));padding-bottom:max(40px,env(safe-area-inset-bottom))}
+  .wrap>*,.row>*{min-width:0}
+  .chip{max-width:100%;overflow-wrap:anywhere;text-align:left;min-height:44px}
+  .btn.sm,.del{min-height:44px;min-width:44px}
+  .ctx{top:env(safe-area-inset-top,0px)}
+  .ctx .big{overflow-wrap:anywhere}
+  .editing .input-actions{position:fixed;z-index:10;bottom:var(--keyboard-inset,0px);left:0;right:0;margin:0!important;padding:8px max(14px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:var(--card);border-top:1px solid var(--line)}
+  .editing .wrap{padding-bottom:100px}
+  textarea{scroll-margin-bottom:100px}
+  [hidden]{display:none!important}
 </style>
+</head>
+<body>
 
 <div class="wrap">
 
   <div class="card" style="padding:12px 14px">
-    <h1>펀치리스트 현장 테스트</h1>
+    <h1>현장 펀치리스트</h1>
     <p class="sub">말하거나 눌러서 한 줄씩 쌓고, 사무실에서 엑셀로 옮깁니다. 시험용이며 서버에 저장되지 않습니다.</p>
   </div>
 
@@ -135,7 +153,7 @@
       <label class="f" for="textIn">직접 입력 (자판 마이크로 말해도 됩니다)</label>
       <textarea id="textIn" placeholder="예) 우측벽 좌측하단 골조 턱짐 할석미장"></textarea>
     </div>
-    <div class="row" style="margin-top:10px">
+    <div class="row input-actions" style="margin-top:10px">
       <button class="btn pri wide" id="addBtn">한 줄 추가</button>
     </div>
   </div>
@@ -684,9 +702,23 @@
     paintPad(); paintNext(); paintRows(); paintCtx(); paintStat(); paintSetupFields();
   }
 
+  function fitKeyboard(){
+    var v = window.visualViewport;
+    document.documentElement.style.setProperty("--keyboard-inset", (v ? Math.max(0,innerHeight-v.height-v.offsetTop) : 0)+"px");
+  }
+  function focusActions(){
+    document.body.classList.toggle("editing", document.activeElement===$("textIn") || document.activeElement===$("addBtn"));
+    fitKeyboard();
+  }
+  document.addEventListener("focusin",focusActions);
+  document.addEventListener("focusout",function(){ setTimeout(focusActions,0); });
+  if(window.visualViewport){ visualViewport.addEventListener("resize",fitKeyboard); visualViewport.addEventListener("scroll",fitKeyboard); }
   paintAll();
   $("diag").textContent = SR
     ? ("계속 듣기 지원: 예 · " + (navigator.userAgent.indexOf("iPhone")>=0 ? "아이폰 — 조용하면 스스로 멈출 수 있습니다" : "안드로이드·PC"))
     : "계속 듣기 지원: 아니오 — 자판 마이크로 입력하세요";
 })();
 </script>
+
+</body>
+</html>

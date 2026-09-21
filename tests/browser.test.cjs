@@ -88,3 +88,22 @@ test('R5: creation time persists and export keeps each row date; old rows stay u
   assert.ok(Number.isFinite(Date.parse(rows[2].createdAt)));
   assert.equal(rows[0].createdAt,undefined);
 });
+
+test('R4: browser downloads a real XLSX and failed clipboard shows selectable fallback',async t=>{
+  const page=await pageFor(t,()=>{
+    Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw Error('denied');}}});
+    document.execCommand=()=>false;
+  });
+  await selectUnit(page);await page.locator('#textIn').fill(' =1+1\t확인\n벽 보수');await page.locator('#addBtn').click();
+  assert.equal(await page.locator('#tb tr').count(),1);
+  const pending=page.waitForEvent('download',{timeout:8000});pending.catch(()=>{});await page.locator('#downloadBtn').click();
+  assert.match(await page.locator('#heard').textContent(),/파일 받기/, 'download action feedback');
+  const download=await pending;assert.match(download.suggestedFilename(),/^펀치리스트_샘플현장_\d{8}\.xlsx$/);
+  const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);
+  const output=require('node:child_process').execFileSync(process.env.PYTHON_PATH||'python',[path.join(__dirname,'verify_xlsx.py')],{input:Buffer.concat(chunks),encoding:'utf8'});
+  assert.match(output,/OK/);
+  await page.locator('#copyBtn').click();
+  await page.locator('#copyFallback').waitFor({state:'visible'});
+  assert.match(await page.locator('#heard').textContent(),/실패/);
+  assert.match(await page.locator('#copyText').inputValue(),/'=1\+1/);
+});

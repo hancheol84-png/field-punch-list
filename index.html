@@ -92,7 +92,8 @@
   .ctx{top:env(safe-area-inset-top,0px)}
   .ctx .big{overflow-wrap:anywhere}
   .editing .input-actions{position:fixed;z-index:10;bottom:var(--keyboard-inset,0px);left:0;right:0;margin:0!important;padding:8px max(14px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:var(--card);border-top:1px solid var(--line)}
-  .editing .wrap{padding-bottom:100px}
+  .wrap{padding-bottom:100px}
+  .action-slot{min-height:64px}
   textarea{scroll-margin-bottom:100px}
   [hidden]{display:none!important}
 </style>
@@ -155,9 +156,9 @@
       <div id="inputWarn" class="bad" role="alert" hidden></div>
       <textarea id="textIn" placeholder="예) 우측벽 좌측하단 골조 턱짐 할석미장"></textarea>
     </div>
-    <div class="row input-actions" style="margin-top:10px">
+    <div class="action-slot"><div class="row input-actions" style="margin-top:10px">
       <button class="btn pri wide" id="addBtn">한 줄 추가</button>
-    </div>
+    </div></div>
   </div>
 
   <!-- 목록 -->
@@ -165,6 +166,7 @@
     <div class="row" style="justify-content:space-between">
       <p class="sec-t" style="margin:0">쌓인 목록 <span id="cnt" class="note"></span></p>
       <div class="row">
+        <button class="btn pri" id="downloadBtn">엑셀 받기 (.xlsx)</button>
         <button class="btn sm" id="copyBtn">엑셀로 복사</button>
         <button class="btn sm" id="clearBtn">비우기</button>
       </div>
@@ -175,15 +177,17 @@
         <tbody id="tb"></tbody>
       </table>
     </div>
-    <p class="note" style="margin-top:8px">코어 하나를 위층부터 내려오는 순서로 정렬해 보여 줍니다. “엑셀로 복사”를 누르고 엑셀에 붙여넣기(Ctrl+V) 하세요.</p>
+    <p class="note" style="margin-top:8px">코어 하나를 위층부터 내려오는 순서로 정렬해 보여 줍니다. “엑셀 받기”로 전체·공종별 시트를 받으세요. 복사는 엑셀 셀의 붙여넣기 메뉴를 이용하세요.</p>
   </div>
 
+  <div id="copyFallback" class="card" hidden><p role="alert">자동 복사에 실패했습니다. 아래 내용을 길게 눌러 전체 선택·복사한 뒤 엑셀에 붙여넣으세요.</p><textarea id="copyText" readonly aria-label="직접 복사할 표"></textarea></div>
   <!-- 세팅 -->
   <div class="card">
     <details id="setup">
       <summary>현장 세팅</summary>
       <div style="display:grid;gap:12px">
         <div><label class="f" for="siteIn">현장명</label><input id="siteIn"></div>
+        <div><label class="f" for="inspectorIn">점검인 (선택·이 기기에만 저장)</label><input id="inspectorIn"></div>
         <div><label class="f" for="dongIn">동 (쉼표로 구분)</label><input id="dongIn"></div>
         <div>
           <label class="f" for="coreIn">코어 구성 — 코어=호수 끝 두 자리</label>
@@ -214,6 +218,7 @@
   </div>
 </div>
 
+<script src="./export.js"></script>
 <script>
 (function(){
   "use strict";
@@ -484,14 +489,7 @@
   function paintRows(){
     var tb = $("tb");
     tb.innerHTML = "";
-    var sorted = rows.slice().sort(function(a,b){
-      if(a.dong!==b.dong) return a.dong<b.dong ? -1 : 1;
-      var ca = a.core||"", cb = b.core||"";
-      if(ca!==cb) return ca<cb ? -1 : 1;
-      var fa = floorOf(a.unit), fb = floorOf(b.unit);
-      if(fa!==fb) return fb-fa;
-      return (parseInt(a.unit,10)||0) - (parseInt(b.unit,10)||0);
-    });
+    var sorted = PunchExport.sort(rows);
     sorted.forEach(function(r){
       var tr = document.createElement("tr");
       tr.innerHTML = '<td class="n">'+esc(rowDate(r))+'</td><td class="n">'+esc(r.dong)+'</td><td class="n">'+esc(r.core||"")+'</td>'+
@@ -660,18 +658,19 @@
   function releaseAwake(){ try{ if(wake){ wake.release(); wake = null; } }catch(e){} }
 
   /* ---------- 내보내기 ---------- */
-  function rowDate(r){
-    if(!r.createdAt || !Number.isFinite(Date.parse(r.createdAt))) return "날짜 미상";
-    var d = new Date(r.createdAt);
-    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-  }
-  function tsv(){
-    var head = ["점검일","동","코어","호수","위치","공종","내용"].join("\t");
-    var body = rows.map(function(r){
-      return [rowDate(r), r.dong, r.core||"", r.unit, r.spot||"", r.trade||"", r.text].join("\t");
-    });
-    return [head].concat(body).join("\n");
-  }
+  function rowDate(r){ return PunchExport.day(r.createdAt); }
+  function tsv(){ return PunchExport.tsv(rows); }
+  $("downloadBtn").onclick = function(){
+    try{
+      var snapshot = rows.slice();
+      var bytes = PunchExport.xlsx(snapshot,S.site,S.inspector);
+      var url = URL.createObjectURL(new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+      var a = document.createElement("a"); a.href=url; a.download=PunchExport.filename(S.site);
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},60000);
+      flash("엑셀 파일 받기를 요청했습니다. 파일 앱 또는 다운로드 폴더에서 확인하세요.");
+    }catch(e){ flash("엑셀을 만들지 못했습니다: "+(e.message||e)); }
+  };
 
   /* ---------- 붙이기 ---------- */
   $("micBtn").onclick = function(){ listening ? stopMic() : startMic(); };
@@ -683,7 +682,9 @@
     if(e.key==="Enter" && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); $("addBtn").click(); }
   });
   $("copyBtn").onclick = function(){
+    if(!rows.length){ flash("복사할 기록이 없습니다."); return; }
     var text = tsv();
+    $("copyFallback").hidden = true;
     var done = function(){ flash("복사했습니다. 엑셀에서 붙여넣기 하세요."); };
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text).then(done, function(){ fallback(text, done); });
@@ -691,10 +692,15 @@
   };
   function fallback(text, done){
     var ta = document.createElement("textarea");
-    ta.value = text; ta.style.position="fixed"; ta.style.opacity="0";
+    ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
     document.body.appendChild(ta); ta.select();
-    try{ document.execCommand("copy"); done(); }catch(e){ alert(text); }
-    document.body.removeChild(ta);
+    var ok = false;
+    try{ ok = document.execCommand("copy"); }catch(e){}
+    ta.remove();
+    if(ok){ done(); return; }
+    $("copyFallback").hidden=false; $("copyText").value=text;
+    $("copyText").focus(); $("copyText").select();
+    flash("자동 복사에 실패했습니다. 직접 선택·복사해 주세요.");
   }
   $("clearBtn").onclick = function(){
     if(!rows.length) return;
@@ -702,6 +708,7 @@
   };
   $("saveSet").onclick = function(){
     S.site = $("siteIn").value.trim() || S.site;
+    S.inspector = $("inspectorIn").value.trim();
     S.dongs = $("dongIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
     S.cores = $("coreIn").value.trim();
     S.spots = $("spotIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
@@ -719,6 +726,7 @@
 
   function paintSetupFields(){
     $("siteIn").value = S.site;
+    $("inspectorIn").value = S.inspector || "";
     $("dongIn").value = S.dongs.join(", ");
     $("coreIn").value = S.cores;
     $("spotIn").value = S.spots.join(", ");

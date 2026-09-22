@@ -92,7 +92,8 @@
   .chip{max-width:100%;overflow-wrap:anywhere;text-align:left;min-height:44px}
   .btn.sm,.del{min-height:44px;min-width:44px}
   .ctx{top:env(safe-area-inset-top,0px)}
-  .ctx .big{overflow-wrap:anywhere}
+  .ctx .big{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ctx .pill{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .editing .input-actions{position:fixed;z-index:10;bottom:var(--keyboard-inset,0px);left:0;right:0;margin:0!important;padding:8px max(14px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:var(--card);border-top:1px solid var(--line)}
   .wrap{padding-bottom:100px}
   .action-slot{min-height:64px}
@@ -754,7 +755,7 @@
   function addRow(text){
     if(!canEdit())return false;
     if(!text || !text.trim()) return false;
-    if(text.trim().length>32767){
+    if([text.trim(),cur.dong,cur.unit,cur.spot,cur.trade,coreOf(cur.unit)].some(function(v){return String(v||"").length>32767;})){
       if($("textIn").value.trim()!==text.trim())$("textIn").value+=($("textIn").value ? "\n" : "")+text;
       $("inputWarn").textContent="엑셀에 넣을 수 있도록 한 항목을 32,767자 이하로 줄여 주세요. 내용은 입력칸에 보관했습니다.";
       $("inputWarn").hidden=false;save();return false;
@@ -994,7 +995,7 @@
       if(new Set(next[key]).size!==next[key].length)return "동·위치·공종·문구의 중복 항목을 정리해 주세요.";
       if(next[key].some(function(v){return v.length>32767;}))return "항목은 32,767자 이하로 입력하세요.";
     }
-    if(next.site.length>32767 || next.inspector.length>32767)return "현장명·점검인은 32,767자 이하로 입력하세요.";
+    if(next.site.length>32767 || next.inspector.length>32767 || next.cores.length>32767)return "현장명·점검인·코어 설정은 32,767자 이하로 입력하세요.";
     var used=new Set();
     if(next.cores){
       for(var part of next.cores.split(";")){

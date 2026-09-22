@@ -366,3 +366,12 @@ test('R17: mobile cards expose full-width content and edit actions; recent item 
  await page.setViewportSize({width:1280,height:900});assert.equal(await page.locator('#tbl').evaluate(e=>getComputedStyle(e).display),'table');
  await page.locator('#listCard').screenshot({path:path.join(root,'.test-output/improved-desktop-list.png')});
 });
+
+
+test('R14: legacy oversized metadata is repairable and cannot create new unexportable rows',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[],current:{dong:'101',unit:'1503',spot:'가'.repeat(32768),trade:''}})));
+ await page.locator('#textIn').fill('남겨 둘 내용');await page.locator('#addBtn').click();
+ assert.equal(await page.locator('#tb tr').count(),0);assert.equal(await page.locator('#textIn').inputValue(),'남겨 둘 내용');
+ await page.locator('#spots').getByRole('button',{name:'거실',exact:true}).click();await page.locator('#addBtn').click();
+ assert.equal(await page.locator('#tb tr').count(),1);
+});

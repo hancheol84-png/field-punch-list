@@ -102,6 +102,7 @@
 </head>
 <body>
 
+<div id="editGuard" class="bad" role="status" hidden><span id="editGuardText"></span> <button id="reloadGuard" class="btn">이 창 새로고침</button></div>
 <div id="storageWarn" class="bad" role="alert" hidden style="position:sticky;top:0;z-index:20"></div>
 <div class="wrap">
   <div id="storageRecovery" class="card" hidden><p>기존 저장 데이터를 덮어쓰지 않았습니다. 원본을 받은 뒤 브라우저의 사이트 데이터 설정에서 이 앱 저장소를 정리할 수 있습니다. 현재 입력한 기록은 먼저 엑셀로 받아 주세요.</p><button id="rawDownloadBtn" class="btn">읽지 못한 원본 JSON 받기</button></div>
@@ -233,8 +234,29 @@
 
 <script src="./export.js"></script>
 <script>
-(function(){
+(async function(){
   "use strict";
+  var hasEditLock = false, staleStorage = false, lastStoredRaw = null;
+  if(navigator.locks){
+    await new Promise(function(resolve){
+      navigator.locks.request("field-punch-list-editor", {ifAvailable:true}, function(lock){
+        hasEditLock = !!lock; resolve();
+        if(lock) return new Promise(function(){}); // Released by the browser when this document closes.
+      }).catch(function(){resolve();});
+    });
+  }
+  function protectEditor(message){
+    $("editGuard").hidden=false;$("editGuardText").textContent=message;
+    document.querySelectorAll("button,input,textarea,select").forEach(function(el){
+      if(el.id==="textIn"){el.readOnly=true;return;}
+      if(["downloadBtn","copyBtn","copyText","rawDownloadBtn","reloadGuard"].indexOf(el.id)<0)el.disabled=true;
+    });
+  }
+  function canEdit(){return hasEditLock && !staleStorage;}
+  $("reloadGuard").onclick=function(){
+    if(staleStorage && !confirm("이 창의 내용을 엑셀로 받았나요? 새로고침하면 다른 창에서 저장한 기록을 불러옵니다."))return;
+    location.reload();
+  };
   var LS = "punchlist.v2";
   var storageReadWarning = "", storageReadBlocked = false, unreadableRaw = null;
   var DEF = {
@@ -278,7 +300,7 @@
   function load(){
     var base = JSON.parse(JSON.stringify(DEF));base.version=2;base.rows=[];
     try{
-      var raw=localStorage.getItem(LS);if(!raw)return base;
+      var raw=localStorage.getItem(LS);lastStoredRaw=raw;if(!raw)return base;
       unreadableRaw=raw;
       var o=JSON.parse(raw);
       if(!o || o.version!==2 || !Array.isArray(o.rows))throw Error('format');
@@ -303,13 +325,21 @@
     }
   }
   function save(){
+    if(!canEdit())return false;
     if(storageReadBlocked){$("storageWarn").textContent=storageReadWarning;$("storageWarn").hidden=false;return false;}
     S.version = 2;
     S.rows = rows;
     S.current = cur;
     S.draft = $("textIn").value;
     try{
-      localStorage.setItem(LS, JSON.stringify(S));
+      if(localStorage.getItem(LS)!==lastStoredRaw){
+        staleStorage=true;
+        protectEditor("다른 창에서 기록이 바뀌어 저장을 멈췄습니다. 이 창의 기록은 엑셀로 받고, 입력 중 내용은 따로 복사한 뒤 새로고침하세요.");
+        stopMic("멈춤","다른 창의 기록을 덮어쓰지 않도록 입력을 멈췄습니다.");
+        return false;
+      }
+      var serialized=JSON.stringify(S);
+      localStorage.setItem(LS, serialized);lastStoredRaw=serialized;
       $("storageWarn").hidden = true;
       return true;
     }catch(e){
@@ -451,14 +481,14 @@
   function chips(host, list, activeVal, onPick, addLabel, onAdd){
     host.innerHTML = "";
     list.forEach(function(v){
-      var b = document.createElement("button");
+      var b = document.createElement("button"); b.disabled=!canEdit();
       b.className = "chip" + (v===activeVal ? " on" : "");
       b.textContent = v;
       b.onclick = function(){ onPick(v); };
       host.appendChild(b);
     });
     if(addLabel){
-      var a = document.createElement("button");
+      var a = document.createElement("button"); a.disabled=!canEdit();
       a.className = "chip add";
       a.textContent = addLabel;
       a.onclick = onAdd;
@@ -483,7 +513,7 @@
     var host = $("phrases");
     host.innerHTML = "";
     S.phrases.forEach(function(p){
-      var b = document.createElement("button");
+      var b = document.createElement("button"); b.disabled=!canEdit();
       b.className = "chip";
       b.textContent = p;
       b.onclick = function(){ addRow(p); };
@@ -499,7 +529,7 @@
     var cands = [n-100, n+1, n-99].filter(function(v){ return v>0; });
     var label = ["한 층 아래","옆 세대","아래 옆"];
     cands.forEach(function(v,i){
-      var b = document.createElement("button");
+      var b = document.createElement("button"); b.disabled=!canEdit();
       b.className = "btn sm";
       b.innerHTML = '<b style="font-family:var(--mono)">'+v+'</b> <span style="color:var(--ink3);font-size:12px">'+label[i]+'</span>';
       b.onclick = function(){ setUnit(String(v)); };
@@ -510,7 +540,7 @@
     var host = $("pad");
     host.innerHTML = "";
     ["1","2","3","4","5","6","7","8","9","지움","0","이동"].forEach(function(k){
-      var b = document.createElement("button");
+      var b = document.createElement("button"); b.disabled=!canEdit();
       b.className = "btn" + (k==="지움"||k==="이동" ? " act" : "");
       if(k==="이동") b.className += " pri";
       b.textContent = k;
@@ -533,7 +563,7 @@
         '<td class="n">'+esc(r.unit)+'</td><td>'+esc(r.spot||"")+'</td><td>'+esc(r.trade||"")+'</td>'+
         '<td>'+esc(r.text)+'</td><td>'+esc(r.downloadRequestedAt ? '요청 '+PunchExport.day(r.downloadRequestedAt) : '아직 안 받음')+'</td>';
       var td = document.createElement("td");
-      var x = document.createElement("button");
+      var x = document.createElement("button"); x.disabled=!canEdit();
       x.className = "del"; x.innerHTML = "&times;"; x.title = "지우기";
       x.onclick = function(){ rows.splice(rows.indexOf(r),1); save(); paintRows(); };
       td.appendChild(x); tr.appendChild(td);
@@ -583,6 +613,7 @@
     say(cur.dong+"동 "+n+"호");
   }
   function addRow(text){
+    if(!canEdit())return false;
     if(!text || !text.trim()) return false;
     if(!cur.unit){
       var el = $("textIn");
@@ -724,6 +755,7 @@
     }catch(e){stopMic("오류","마이크를 켜지 못했습니다. 자판 마이크로 입력해 주세요.");}
   }
   function startMic(){
+    if(!canEdit())return;
     if(!SR){micStatus("오류","계속 듣기를 지원하지 않습니다. 직접 입력 칸에서 자판 마이크를 사용해 주세요.");return;}
     if(!navigator.onLine){micStatus("오류","오프라인에서는 계속 듣기가 어려울 수 있습니다. 직접 입력이나 기기 자판 마이크를 사용해 주세요.");return;}
     if(listening)return;
@@ -895,6 +927,8 @@
   }else $("offlineNotice").textContent="이 브라우저에서는 오프라인 준비를 지원하지 않습니다.";
   paintAll();
   maintainRetention();
+  if(!hasEditLock)protectEditor(navigator.locks ? "다른 창에서 편집 중입니다. 이 창은 읽기 전용입니다. 편집 중인 창을 닫은 뒤 새로고침하세요." : "이 브라우저는 안전한 저장 보호를 지원하지 않습니다. 최신 브라우저로 열어 주세요. 현재 기록은 엑셀로 받을 수 있습니다.");
+  document.documentElement.dataset.ready="true";
   $("diag").textContent = SR
     ? ("계속 듣기 지원: 예 · " + (navigator.userAgent.indexOf("iPhone")>=0 ? "아이폰 — 조용하면 스스로 멈출 수 있습니다" : "안드로이드·PC"))
     : "계속 듣기 지원: 아니오 — 자판 마이크로 입력하세요";

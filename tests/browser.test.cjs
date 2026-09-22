@@ -36,6 +36,7 @@ async function pageFor(t, init, options={}){
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   t.after(()=>assert.deepEqual(errors,[]));
   await page.goto(origin+(options.path||"/"));
+  await page.waitForFunction(()=>document.documentElement.dataset.ready==="true");
   return page;
 }
 test('R2: 390px layout fits and focused input keeps add action in view',async t=>{
@@ -231,4 +232,26 @@ test('R8: Pages subpath and waiting-worker update preserve draft; failed save bl
  await page.context().setOffline(true);await page.reload();
  assert.equal(await page.locator('#textIn').inputValue(),'업데이트 전 초안');
  assert.match(await page.locator('h1').textContent(),/현장 펀치리스트/);
+});
+
+
+test('R11: second tab cannot overwrite records and can take over after editor closes',async t=>{
+ const a=await pageFor(t);const b=await a.context().newPage();await b.goto(origin+'/');
+ await b.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+ assert.equal(await b.locator('#unitGo').isDisabled(),true);
+ await selectUnit(a);await a.locator('#textIn').fill('첫 창 기록');await a.locator('#addBtn').click();
+ await b.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
+ assert.equal(await b.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows.length),1);
+ await a.close();await b.locator('#reloadGuard').click();await b.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+ assert.equal(await b.locator('#unitGo').isDisabled(),false);assert.equal(await b.locator('#tb tr').count(),1);
+ await b.locator('#textIn').fill('이어 쓴 기록');await b.locator('#addBtn').click();
+ assert.equal(await b.locator('#tb tr').count(),2);
+});
+test('R11: external storage change blocks stale save but preserves local export',async t=>{
+ const page=await pageFor(t);await selectUnit(page);
+ await page.evaluate(()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'102',unit:'1401',text:'다른 창 기록'}]})));
+ await page.locator('#textIn').fill('이 창 초안');
+ assert.match(await page.locator('#editGuard').textContent(),/다른 창에서 기록이 바뀌어/);
+ assert.equal(await page.locator('#addBtn').isDisabled(),true);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].text),'다른 창 기록');
 });

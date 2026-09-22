@@ -27,7 +27,7 @@ try {
   if (-not $taskReady) { throw 'Test Chrome did not start.' }
   Push-Location $taskRoot
   try {
-    node --test tests/public.test.cjs tests/export.test.cjs tests/browser.test.cjs
+    node --test tests/public.test.cjs tests/export.test.cjs tests/speech.test.cjs tests/browser.test.cjs
     $taskTestExit = $LASTEXITCODE
   } finally { Pop-Location }
 } finally {

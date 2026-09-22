@@ -123,6 +123,11 @@
   .record-arrow{font-size:22px;color:var(--ink3)}
   .detail-meta{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;margin:12px 0}
   .detail-meta dt{color:var(--ink2)}.detail-meta dd{margin:0;overflow-wrap:anywhere}
+  #originalText{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px}
+  .correction-note{margin:10px 0;color:var(--ink2);font-size:13px}
+  .remember-choice{display:flex;align-items:flex-start;gap:8px;font-size:13px}
+  .remember-choice input{width:20px;min-width:20px;margin:3px 0}
+  #correctionChoices{display:grid;gap:8px;margin:10px 0}
   #detailText{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.6}
   @media(max-width:899px){
     .ctx.compact{padding:8px 12px;border-radius:0 0 8px 8px}
@@ -216,7 +221,7 @@
     </div></div>
   </div>
 
-  <div id="recentEntry" class="recent" hidden><div class="row" style="justify-content:space-between"><strong>최근 등록</strong><button id="recentEdit" class="btn sm">바로 수정</button></div><p id="recentContext" class="note"></p><p id="recentText"></p></div>
+  <div id="recentEntry" class="recent" hidden><div class="row" style="justify-content:space-between"><strong>최근 등록</strong><button id="recentEdit" class="btn sm">바로 수정</button></div><p id="recentContext" class="note"></p><p id="recentText"></p><button id="recentReview" class="btn sm" data-view="true" hidden>보정 확인</button></div>
 
   <!-- 목록 -->
   <div class="card" id="listCard">
@@ -248,6 +253,10 @@
 
   <div id="copyFallback" class="card" hidden><p role="alert">자동 복사에 실패했습니다. 아래 내용을 길게 눌러 전체 선택·복사한 뒤 엑셀에 붙여넣으세요.</p><textarea id="copyText" readonly aria-label="직접 복사할 표"></textarea></div>
   <p class="note">기록은 입력 후 7일이 지나면 다음 실행·복귀 때 삭제됩니다. 내려받은 엑셀은 삭제되지 않습니다. “받기 요청”은 실제 파일 저장 완료를 보장하지 않으니 파일을 확인하세요. Safari는 장기간 미사용 등 브라우저 정책에 따라 기록이 더 일찍 없어질 수 있습니다.</p>
+  <div class="card"><details id="speechSetup"><summary>확인한 보정 표현</summary>
+    <p class="note">처음에는 입력한 문장을 그대로 등록합니다. 항목의 보정 제안에서 ‘다음에도 자동 보정’을 선택한 단어만 이 기기에 기억합니다. 기억을 지워도 이미 작성한 내용은 바뀌지 않습니다.</p>
+    <div id="speechRuleList"></div>
+  </details></div>
   <!-- 세팅 -->
   <div class="card">
     <details id="setup">
@@ -290,6 +299,13 @@
 <dialog id="detailDialog" aria-labelledby="detailTitle">
   <h2 id="detailTitle">항목 상세</h2><p id="detailWarn" class="bad" role="status" hidden></p>
   <dl id="detailMeta" class="detail-meta"></dl><p id="detailText"></p>
+  <p id="correctionLog" class="correction-note" hidden></p>
+  <details id="originalBlock" hidden><summary>입력·보정 전 문장 보기</summary><p id="originalText"></p>
+    <p class="note">등록 전 텍스트입니다. 이전 버전의 기록은 처음 보정하기 직전의 내용입니다. 녹음이나 실제 발화의 정답이 아닙니다.</p><button id="restoreOriginal" class="btn">이 문장으로 되돌리기</button>
+  </details>
+  <section id="correctionReview" hidden><p class="correction-note">보정 제안 · 뜻이 맞을 때만 눌러 적용하세요.</p>
+    <label class="remember-choice"><input type="checkbox" id="rememberCorrection">다음에도 같은 단어를 자동 보정 (이 기기)</label><div id="correctionChoices"></div>
+  </section>
   <div class="row"><button id="detailEdit" class="btn pri">수정</button><button id="detailDelete" class="btn">삭제</button><button id="detailClose" data-view="true" class="btn">닫기</button></div>
 </dialog>
 <dialog id="editDialog" aria-labelledby="editTitle">
@@ -307,6 +323,7 @@
   <div class="row"><button id="draftSaveMove" class="btn pri">현재 세대에 등록하고 이동</button><button id="draftCarry" class="btn">새 세대로 내용 옮기기</button><button id="draftStay" class="btn">여기서 계속 작성</button></div>
 </dialog>
 <script src="./export.js"></script>
+<script src="./speech.js"></script>
 <script>
 (async function(){
   "use strict";
@@ -336,6 +353,7 @@
   var storageReadWarning = "", storageReadBlocked = false, unreadableRaw = null;
   var DEF = {
     site: "샘플현장",
+    speechRules: [],
     dongs: ["101", "102", "103"],
     cores: "1코어=01,02; 2코어=03,04",
     spots: ["현관","거실","주방","침실1","침실2","침실3","드레스룸","팬트리룸","부부욕실","공용욕실","대피공간","발코니1","발코니2","실외기실","복도","계단실창"],
@@ -351,19 +369,24 @@
 
   function $(id){ return document.getElementById(id); }
   function load(){
-    var base = JSON.parse(JSON.stringify(DEF));base.version=2;base.rows=[];
+    var base = JSON.parse(JSON.stringify(DEF));base.version=3;base.rows=[];
     try{
       var raw=localStorage.getItem(LS);lastStoredRaw=raw;if(!raw)return base;
       unreadableRaw=raw;
       var o=JSON.parse(raw);
-      if(!o || o.version!==2 || !Array.isArray(o.rows))throw Error('format');
+      if(!o || (o.version!==2 && o.version!==3) || !Array.isArray(o.rows))throw Error('format');
       ['site','inspector','cores','draft'].forEach(function(k){if(o[k]!==undefined){if(typeof o[k]!=='string')throw Error('format');base[k]=o[k];}});
       ['dongs','spots','trades','phrases'].forEach(function(k){
         if(o[k]!==undefined){if(!Array.isArray(o[k]) || !o[k].every(function(v){return typeof v==='string' && v.trim();}) || (k==='dongs'&&!o[k].length))throw Error('format');base[k]=o[k];}
       });
       o.rows.forEach(function(r){
         if(!r || typeof r!=='object' || !['dong','unit','text'].every(function(k){return typeof r[k]==='string';}))throw Error('format');
-        ['core','spot','trade','createdAt','downloadRequestedAt'].forEach(function(k){if(r[k]!==undefined && typeof r[k]!=='string')throw Error('format');});
+        ['core','spot','trade','createdAt','downloadRequestedAt','inputText','inputKind'].forEach(function(k){if(r[k]!==undefined && typeof r[k]!=='string')throw Error('format');});
+      });
+      if(o.speechRules!==undefined){if(!PunchSpeech.validRules(o.speechRules))throw Error("rules");base.speechRules=o.speechRules;}
+      o.rows.forEach(function(r){
+        if(r.inputKind!==undefined && !["speech","text"].includes(r.inputKind))throw Error("input kind");
+        if(r.correctionLog!==undefined && !PunchSpeech.validRules(r.correctionLog))throw Error("correction log");
       });
       base.rows=o.rows;
       if(o.current!==undefined){
@@ -374,13 +397,13 @@
     }catch(e){
       storageReadWarning='저장 형식을 읽을 수 없습니다. 기존 데이터를 보존하기 위해 저장을 중지했습니다 — 새로 입력한 기록은 엑셀로 받아 주세요.';
       storageReadBlocked=true;
-      base=JSON.parse(JSON.stringify(DEF));base.version=2;base.rows=[];return base;
+      base=JSON.parse(JSON.stringify(DEF));base.version=3;base.rows=[];return base;
     }
   }
   function save(){
     if(!canEdit()){$("saveState").textContent="읽기 전용 · 이 창에서는 저장하지 않습니다.";return false;}
     if(storageReadBlocked){$("storageWarn").textContent=storageReadWarning;$("storageWarn").hidden=false;$("saveState").textContent="저장 중지 · 기록은 엑셀로, 초안은 따로 보관하세요.";return false;}
-    S.version = 2;
+    S.version = 3;
     S.rows = rows;
     S.current = cur;
     S.draft = $("textIn").value;
@@ -544,12 +567,81 @@
   }
   function openRowDetail(row){
     maintainRetention();if(rows.indexOf(row)<0)return;
-    viewingRow=row;clearTimeout(retryTimer);retryTimer=null;closeRecognition();
+    viewingRow=row;$("rememberCorrection").checked=false;$("originalBlock").open=false;clearTimeout(retryTimer);retryTimer=null;closeRecognition();
     if(listening)micStatus("멈춤","상세 확인이 끝나면 다시 듣습니다.");
     $("detailTitle").textContent=row.dong+"동 "+row.unit+"호";$("detailWarn").hidden=true;
     $("detailMeta").innerHTML="";
     [["위치",row.spot||"미지정"],["공종",row.trade||"미지정"],["점검일",rowDate(row)],["코어",row.core||"미지정"],["파일 받기",row.downloadRequestedAt ? "요청 "+PunchExport.day(row.downloadRequestedAt)+" · 실제 파일 확인 필요" : "아직 안 받음"]].forEach(function(pair){var dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=pair[0];dd.textContent=pair[1];$("detailMeta").append(dt,dd);});
-    $("detailText").textContent=row.text;$("detailEdit").disabled=!canEdit();$("detailDelete").disabled=!canEdit();$("detailDialog").showModal();
+    $("detailText").textContent=row.text;$("detailEdit").disabled=!canEdit();$("detailDelete").disabled=!canEdit();paintCorrectionReview(row);$("detailDialog").showModal();
+  }
+  function correctionError(message){$("detailWarn").textContent=message;$("detailWarn").hidden=false;}
+  function reviewRow(){
+    if(!canEdit())return null;
+    maintainRetention();
+    if(!viewingRow || rows.indexOf(viewingRow)<0){correctionError("이미 삭제되었거나 보관 기간이 지난 항목입니다.");return null;}
+    return viewingRow;
+  }
+  function paintCorrectionReview(row){
+    $("detailText").textContent=row.text;
+    $("correctionLog").hidden=!row.correctionLog || !row.correctionLog.length;
+    $("correctionLog").textContent=(row.correctionLog||[]).map(function(r){return r.from+" → "+r.to;}).join(" · ");
+    $("originalBlock").hidden=typeof row.inputText!=="string" || row.inputText===row.text;
+    $("originalText").textContent=row.inputText||"";$("restoreOriginal").disabled=!canEdit();
+    var suggestions=PunchSpeech.analyze(row.text).suggestions;
+    $("correctionReview").hidden=!suggestions.length;$("rememberCorrection").disabled=!canEdit();
+    $("correctionChoices").replaceChildren();
+    suggestions.forEach(function(rule){
+      var b=document.createElement("button");b.className="btn";b.disabled=!canEdit();
+      b.textContent=rule.from+" → "+rule.to+" 적용"+(rule.count>1 ? " ("+rule.count+"곳)" : "");
+      b.onclick=function(){applyCorrection(rule);};$("correctionChoices").appendChild(b);
+    });
+  }
+  function applyCorrection(rule){
+    var row=reviewRow();if(!row)return;
+    var result=PunchSpeech.analyze(row.text,[rule]);
+    if(result.text===row.text)return;
+    if(result.text.length>32767){correctionError("보정 후 내용이 32,767자를 넘어 적용하지 않았습니다.");return;}
+    if(row.inputText===undefined){row.inputText=row.text;row.inputKind="text";}
+    row.text=result.text;
+    row.correctionLog=(row.correctionLog||[]).filter(function(r){return r.from!==rule.from;}).concat([{from:rule.from,to:rule.to}]);
+    if($("rememberCorrection").checked){
+      S.speechRules=S.speechRules.filter(function(r){return r.from!==rule.from;}).concat([{from:rule.from,to:rule.to}]);
+    }
+    stat.fixed+=result.applied.reduce(function(n,r){return n+r.count;},0);delete row.downloadRequestedAt;
+    save();paintRows();paintSpeechRules();paintStat();paintCorrectionReview(row);
+    $("rememberCorrection").checked=false;
+    correctionError("보정했습니다. 변경한 내용은 엑셀로 다시 받아 주세요.");
+  }
+  $("restoreOriginal").onclick=function(){
+    var row=reviewRow();if(!row || typeof row.inputText!=="string")return;
+    if(row.inputText.length>32767){correctionError("입력 당시 문장이 너무 깁니다. 수정에서 필요한 내용을 확인하세요.");return;}
+    if(!confirm("현재 내용을 입력 당시 문장으로 되돌릴까요? 이후 직접 수정한 내용도 바뀝니다."))return;
+    row=reviewRow();if(!row)return;
+    row.text=row.inputText;row.correctionLog=[];delete row.downloadRequestedAt;
+    save();paintRows();paintCorrectionReview(row);correctionError("입력 당시 문장으로 되돌렸습니다. 자동 보정 기억은 아래 ‘확인한 보정 표현’에서 지울 수 있습니다.");
+  };
+  function paintSpeechRules(){
+    var host=$("speechRuleList");host.replaceChildren();
+    if(!S.speechRules.length){var empty=document.createElement("p");empty.className="note";empty.textContent="기억한 표현 없음 · 자동으로 바꾸는 단어가 없습니다.";host.appendChild(empty);}
+    S.speechRules.forEach(function(rule){
+      var line=document.createElement("p"),label=document.createElement("span"),button=document.createElement("button");
+      line.className="row";label.textContent=rule.from+" → "+rule.to;button.className="btn sm";button.textContent="기억 지우기";button.disabled=!canEdit();
+      button.setAttribute("aria-label",rule.from+" 보정 기억 지우기");
+      button.onclick=function(){if(!canEdit())return;S.speechRules=S.speechRules.filter(function(r){return r.from!==rule.from;});save();paintSpeechRules();};
+      line.append(label,button);host.appendChild(line);
+    });
+  }
+  function addInput(text,kind){
+    var raw=String(text||"").trim();if(!raw)return false;
+    // Validate the original before a shorter correction could conceal oversized input.
+    if(raw.length>32767)return addRow(raw);
+    var result=PunchSpeech.analyze(raw,S.speechRules);
+    if(result.text.length>32767)result=PunchSpeech.analyze(raw);
+    var row=addRow(result.text,{text:raw,kind:kind,log:result.applied.map(function(r){return {from:r.from,to:r.to};})});
+    if(!row)return false;
+    stat.fixed+=result.applied.reduce(function(n,r){return n+r.count;},0);
+    flash(result.applied.length ? "확인한 표현 보정: "+result.applied.map(function(r){return r.from+" → "+r.to;}).join(" · ")+" · 최근 등록에서 보정 확인" : "원문대로 등록: "+raw);
+    return row;
   }
   function closeRowDetail(resume){viewingRow=null;$("detailDialog").close();if(resume!==false && listening)openRecognition();}
   $("detailClose").onclick=function(){closeRowDetail();};
@@ -623,8 +715,10 @@
     paintRetention();
     var recent=rows[rows.length-1];$("recentEntry").hidden=!recent;
     if(recent){$("recentContext").textContent=recent.dong+"동 "+recent.unit+"호 · "+(recent.spot||"위치 미지정")+" · "+(recent.trade||"공종 미지정");$("recentText").textContent=recent.text;}
+    $("recentReview").hidden=!recent || (!PunchSpeech.analyze(recent.text).suggestions.length && (recent.inputText===undefined || recent.inputText===recent.text));
     $("recentEdit").disabled=!canEdit();
   }
+  $("recentReview").onclick=function(){var recent=rows[rows.length-1];if(recent)openRowDetail(recent);};
   $("recentEdit").onclick=function(){var recent=rows[rows.length-1];if(recent)openRowEditor(recent);};
   function clearDeletedAction(){deletedAction=null;clearTimeout(restoreTimer);$("restoreNotice").hidden=true;}
   function deleteRecords(items){
@@ -679,6 +773,7 @@
     if(!error && Object.values(patch).some(function(v){return v.length>32767;}))error="엑셀에 넣을 수 있도록 각 항목을 32,767자 이하로 줄여 주세요.";
     if(error){$("editWarn").textContent=error;$("editWarn").hidden=false;return;}
     patch.core=coreOf(patch.unit);
+    if(patch.text!==editingRow.text)editingRow.correctionLog=[];
     Object.assign(editingRow,patch);delete editingRow.downloadRequestedAt;
     save();paintRows();closeRowEditor();flash("수정했습니다. 변경한 내용은 엑셀로 다시 받아 주세요.");
   };
@@ -737,7 +832,7 @@
     if(!canEdit()){if(action==="stay"){pendingContext=null;$("contextDialog").close();}return;}
     var next=pendingContext;
     if(action==="save"){
-      if(!addRow($("textIn").value))return;
+      if(!addInput($("textIn").value,"text"))return;
       $("textIn").value="";save();
     }
     pendingContext=null;$("contextDialog").close();
@@ -752,17 +847,18 @@
     var n=String(v||"").replace(/\D/g,"");if(!n)return;
     requestContext({unit:n});
   }
-  function addRow(text){
+  function addRow(text,origin){
     if(!canEdit())return false;
+    var preserved=origin ? origin.text : text;
     if(!text || !text.trim()) return false;
     if([text.trim(),cur.dong,cur.unit,cur.spot,cur.trade,coreOf(cur.unit)].some(function(v){return String(v||"").length>32767;})){
-      if($("textIn").value.trim()!==text.trim())$("textIn").value+=($("textIn").value ? "\n" : "")+text;
+      if($("textIn").value.trim()!==preserved.trim())$("textIn").value+=($("textIn").value ? "\n" : "")+preserved;
       $("inputWarn").textContent="엑셀에 넣을 수 있도록 한 항목을 32,767자 이하로 줄여 주세요. 내용은 입력칸에 보관했습니다.";
       $("inputWarn").hidden=false;save();return false;
     }
     if(!cur.unit){
       var el = $("textIn");
-      if(el.value.trim() !== text.trim()) el.value += (el.value ? "\n" : "") + text;
+      if(el.value.trim() !== preserved.trim()) el.value += (el.value ? "\n" : "") + preserved;
       save();
       $("inputWarn").textContent = "먼저 호수를 정하세요. 입력한 내용은 그대로 남아 있습니다.";
       $("inputWarn").hidden = false;
@@ -771,11 +867,13 @@
       return false;
     }
     $("inputWarn").hidden = true;
-    rows.push({createdAt:new Date().toISOString(), dong:cur.dong, core:coreOf(cur.unit), unit:cur.unit, spot:cur.spot, trade:cur.trade, text:text.trim()});
+    var entry={createdAt:new Date().toISOString(),dong:cur.dong,core:coreOf(cur.unit),unit:cur.unit,spot:cur.spot,trade:cur.trade,text:text.trim()};
+    if(origin){entry.inputText=origin.text;entry.inputKind=origin.kind;entry.correctionLog=origin.log;}
+    rows.push(entry);
     save(); paintRows();
     buzz();
     flash("추가: "+text.trim());
-    return true;
+    return entry;
   }
   function flash(msg){
     var el = $("heard");
@@ -788,7 +886,7 @@
     stat.heard++;
     // Speech is content, never a command or a guessed location/trade.
     // Keep internal spacing, punctuation, measurements and negation intact.
-    if(addRow(said))$("heard").textContent="등록: "+said.trim();
+    addInput(said,"speech");
     paintStat();
   }
 
@@ -920,7 +1018,7 @@
   $("undoBtn").onclick = function(){var g=rows[rows.length-1];if(g)deleteRecords([g]);else flash("삭제할 항목이 없습니다.");};
   $("unitGo").onclick = function(){ setUnit($("unitIn").value); };
   $("unitIn").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); setUnit(this.value); } });
-  $("addBtn").onclick = function(){ var el = $("textIn"); if(addRow(el.value)){ el.value=""; save();if(document.activeElement!==el)document.body.classList.remove("editing"); } paintStat(); };
+  $("addBtn").onclick = function(){ var el = $("textIn"); if(addInput(el.value,"text")){ el.value=""; save();if(document.activeElement!==el)document.body.classList.remove("editing"); } paintStat(); };
   $("textIn").addEventListener("keydown", function(e){
     if(e.key==="Enter" && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); $("addBtn").click(); }
   });
@@ -1004,6 +1102,7 @@
   };
 
   function paintSetupFields(){
+    paintSpeechRules();
     $("siteIn").value = S.site;
     $("inspectorIn").value = S.inspector || "";
     $("dongIn").value = S.dongs.join(", ");

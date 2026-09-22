@@ -477,3 +477,61 @@ test('R21: keyboard input and draft saved during unit move preserve wording',asy
  await page.locator('#textIn').fill('모르탈 15 미리');await selectUnit(page,'1403');await page.locator('#draftSaveMove').click();
  assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows.map(r=>r.text)),[raw,'모르탈 15 미리']);
 });
+
+
+test('R22: review preserves original, learns only after opt-in, and remembers across reload',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#micBtn').click();await speak(page,'겸출 보수');
+ let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.version,3);assert.equal(state.rows[0].text,'겸출 보수');
+ const created=state.rows[0].createdAt;
+ await page.locator('#recentReview').click();assert.equal(await page.locator('#rememberCorrection').isChecked(),false);
+ await page.locator('#correctionChoices button').click();assert.equal(await page.locator('#detailText').textContent(),'견출 보수');
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.deepEqual(state.speechRules,[]);assert.equal(state.rows[0].inputText,'겸출 보수');assert.equal(state.rows[0].createdAt,created);
+ await page.locator('#originalBlock summary').click();assert.equal(await page.locator('#originalText').textContent(),'겸출 보수');
+ page.once('dialog',d=>d.accept());await page.locator('#restoreOriginal').click();assert.equal(await page.locator('#detailText').textContent(),'겸출 보수');
+ await page.locator('#rememberCorrection').check();await page.locator('#correctionChoices button').click();
+ await page.locator('#detailClose').click();await speak(page,'겸출  보수\n우측 이상 없음');
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));
+ assert.deepEqual(state.speechRules,[{from:'겸출',to:'견출'}]);assert.equal(state.rows[1].text,'견출  보수\n우측 이상 없음');assert.equal(state.rows[1].inputText,'겸출  보수\n우측 이상 없음');
+ await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>!!navigator.serviceWorker.controller);await page.context().setOffline(true);
+ await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+ await page.locator('#textIn').fill('겸출 타이핑');await page.locator('#addBtn').click();
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[2].text),'견출 타이핑');
+ await page.locator('#speechSetup summary').click();await page.getByRole('button',{name:'겸출 보정 기억 지우기'}).click();
+ await page.locator('#textIn').fill('겸출 기억 해제 후');await page.locator('#addBtn').click();
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[3].text),'겸출 기억 해제 후');
+ await page.locator('#recentReview').click();await page.locator('#detailDialog').screenshot({path:path.join(root,'.test-output/speech-review-mobile.png')});
+});
+test('R22: original and correction history survive edit, delete recovery and export marker reset',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('겸출 보수');await page.locator('#addBtn').click();
+ const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
+ await page.locator('#recentReview').click();await page.locator('#correctionChoices button').click();
+ let row=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0]);assert.equal(row.downloadRequestedAt,undefined);assert.equal(row.correctionLog[0].from,'겸출');
+ await page.locator('#detailEdit').click();await page.locator('#editText').fill('직접 수정한 내용');await page.locator('#editSave').click();
+ row=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0]);assert.equal(row.inputText,'겸출 보수');assert.deepEqual(row.correctionLog,[]);
+ await page.locator('#recentReview').click();await page.locator('#originalBlock summary').click();page.once('dialog',d=>d.accept());await page.locator('#restoreOriginal').click();
+ assert.equal(await page.locator('#detailText').textContent(),'겸출 보수');assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].createdAt),row.createdAt);
+ await page.locator('#detailDelete').click();await page.locator('#restoreBtn').click();assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].inputText),'겸출 보수');
+});
+test('R22: read-only review cannot apply or remember, and expired records cannot be restored by correction',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'겸출 보수',createdAt:'2026-09-15T03:00:10Z'}],current:{dong:'101',unit:'1503',spot:'',trade:''}})),{clock:'2026-09-22T03:00:00Z'});
+ // Init scripts are context-wide: use the same fake clock to avoid aging the seed in the second page.
+ const second=await page.context().newPage();await second.clock.install({time:new Date('2026-09-22T03:00:00Z')});await second.goto(origin);await second.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+ await second.locator('.record-row').click();assert.equal(await second.locator('#correctionChoices button').isDisabled(),true);assert.equal(await second.locator('#rememberCorrection').isDisabled(),true);await second.close();
+ // Re-open the authoritative state after the test-only seed script in the second page.
+ await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+ await page.locator('.record-row').click();await page.locator('#rememberCorrection').check();await page.clock.fastForward(11000);await page.locator('#correctionChoices button').click();
+ assert.match(await page.locator('#detailWarn').textContent(),/보관 기간/);
+ const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows.length,0);assert.deepEqual(state.speechRules,[]);
+});
+test('R22: version 2 migration keeps rows and draft, bad rules preserve original storage',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'기존 기록'}],draft:'기존 초안',current:{dong:'101',unit:'1503',spot:'',trade:''}})));
+ assert.equal(await page.locator('#textIn').inputValue(),'기존 초안');await page.locator('#addBtn').click();
+ const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.version,3);assert.equal(state.rows[0].text,'기존 기록');assert.equal(state.rows[1].inputText,'기존 초안');
+ const bad=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:3,rows:[],speechRules:[{from:'없음',to:'있음'}]})));
+ assert.equal(await bad.locator('#storageRecovery').isVisible(),true);assert.deepEqual(await bad.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).speechRules),[{from:'없음',to:'있음'}]);
+});
+test('R22: failed registration retains raw draft before any remembered correction',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:3,rows:[],speechRules:[{from:'겸출',to:'견출'}]})));
+ await page.locator('#textIn').fill('겸출 보수');await page.locator('#addBtn').click();assert.equal(await page.locator('#textIn').inputValue(),'겸출 보수');
+ await selectUnit(page);await page.locator('#addBtn').click();const row=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0]);assert.equal(row.inputText,'겸출 보수');assert.equal(row.text,'견출 보수');
+});

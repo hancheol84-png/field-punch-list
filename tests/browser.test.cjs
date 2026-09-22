@@ -170,3 +170,19 @@ test('R7: speech cannot change unit; stale results ignored and hidden view relea
  await page.evaluate(()=>recognizers[1].onresult({resultIndex:0,results:[Object.assign([{transcript:'추가되면 안 되는 항목'}],{isFinal:true})]}));
  assert.equal(await page.locator('#tb tr').count(),1);
 });
+
+test('R8: installed shell reloads offline and exports without any remote resources',async t=>{
+ const page=await pageFor(t);
+ await page.evaluate(()=>navigator.serviceWorker.ready);
+ await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
+ const requests=[];page.on('request',r=>requests.push(r.url()));
+ await page.evaluate(()=>caches.open('unrelated-project-sentinel'));
+ await page.context().setOffline(true);await page.reload();
+ assert.match(await page.locator('h1').textContent(),/현장 펀치리스트/);
+ await selectUnit(page);await page.locator('#textIn').fill('오프라인 보수');await page.locator('#addBtn').click();
+ assert.equal(await page.locator('#tb tr').count(),1);
+ const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
+ assert.ok(requests.every(url=>url.startsWith(origin+'/')||url.startsWith('blob:')));
+ assert.ok((await page.evaluate(()=>caches.keys())).includes('unrelated-project-sentinel'));
+ assert.match(await page.locator('#offlineNotice').textContent(),/오프라인/);
+});

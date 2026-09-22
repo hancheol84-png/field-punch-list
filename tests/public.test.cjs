@@ -16,3 +16,10 @@ test('public assets have no remote runtime resources or spreadsheet files', () =
   assert.equal(fs.existsSync(path.join(root,'scripts/extract_punch_terms.py')), false);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'.gitignore'),'utf8'), /^!.*xlsx/m);
 });
+
+test('R10: help explains local records, expiry, speech and device verification',()=>{
+ const readme=fs.readFileSync(path.join(root,'README.md'),'utf8');
+ for(const phrase of ['7일','자판 마이크','실기기 필요','punchlist.v2','오프라인'])assert.ok(readme.includes(phrase));
+ assert.ok(fs.existsSync(path.join(root,'.nojekyll')));
+ assert.match(fs.readFileSync(path.join(root,'index.html'),'utf8'),/30초 사용법/);
+});

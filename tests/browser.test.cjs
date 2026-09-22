@@ -75,7 +75,7 @@ test('R3: storage failure stays visible while rows remain exportable in memory',
 
 test('R5: creation time persists and export keeps each row date; old rows stay unknown',async t=>{
   const page=await pageFor(t,()=>{
-    localStorage.setItem('punchTest.v1',JSON.stringify({rows:[{dong:'101',unit:'1501',text:'기존 항목'}, {dong:'101',unit:'1401',text:'어제 항목',createdAt:new Date(Date.now()-86400000).toISOString()}]}));
+    localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1501',text:'기존 항목'}, {dong:'101',unit:'1401',text:'어제 항목',createdAt:new Date(Date.now()-86400000).toISOString()}]}));
     Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copied=text;}}});
   });
   assert.match(await page.locator('#tb').textContent(),/날짜 미상/);
@@ -85,7 +85,7 @@ test('R5: creation time persists and export keeps each row date; old rows stay u
   const yesterday=await page.evaluate(()=>{const d=new Date(Date.now()-86400000);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');});
   assert.ok(text.includes(yesterday));
   await selectUnit(page);await page.locator('#textIn').fill('새 항목');await page.locator('#addBtn').click();
-  const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchTest.v1')).rows);
+  const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows);
   assert.ok(Number.isFinite(Date.parse(rows[2].createdAt)));
   assert.equal(rows[0].createdAt,undefined);
 });
@@ -112,7 +112,7 @@ test('R4: browser downloads a real XLSX and failed clipboard shows selectable fa
 test('R6: seven-day boundary, 3/1 day warning, unknown dates and download marker',async t=>{
  const page=await pageFor(t,()=>{
    const age=n=>new Date(Date.now()-n*86400000).toISOString();
-   localStorage.setItem('punchTest.v1',JSON.stringify({rows:[
+   localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[
     {dong:'101',unit:'1501',text:'만료',createdAt:age(7)},
     {dong:'101',unit:'1502',text:'일일',createdAt:age(6)},
     {dong:'101',unit:'1503',text:'삼일',createdAt:age(4)},
@@ -185,4 +185,22 @@ test('R8: installed shell reloads offline and exports without any remote resourc
  assert.ok(requests.every(url=>url.startsWith(origin+'/')||url.startsWith('blob:')));
  assert.ok((await page.evaluate(()=>caches.keys())).includes('unrelated-project-sentinel'));
  assert.match(await page.locator('#offlineNotice').textContent(),/오프라인/);
+});
+
+test('R9: unsupported or corrupt storage never overwrites original; old origin key untouched',async t=>{
+ const page=await pageFor(t,()=>{
+  localStorage.setItem('punchlist.v2','{"version":99,"rows":[]}');
+  localStorage.setItem('punchTest.v1','old unrelated data');
+ });
+ assert.match(await page.locator('#storageWarn').textContent(),/読み|읽을 수 없습니다/);
+ await selectUnit(page);await page.locator('#textIn').fill('복구 전 새 입력');await page.locator('#addBtn').click();
+ assert.equal(await page.evaluate(()=>localStorage.getItem('punchlist.v2')),'{"version":99,"rows":[]}');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('punchTest.v1')),'old unrelated data');
+ assert.equal(await page.locator('#tb tr').count(),1);
+ assert.equal(await page.locator('#storageRecovery').isVisible(),true);
+ await page.evaluate(()=>localStorage.setItem('punchlist.v2','{"version":2,"rows":[null]}'));
+ // init scripts run on reload; use a new context with malformed data for independent validation.
+ const malformed=await pageFor(t,()=>localStorage.setItem('punchlist.v2','{"version":2,"rows":[null]}'));
+ assert.equal(await malformed.locator('#storageWarn').isVisible(),true);
+ assert.equal(await malformed.evaluate(()=>localStorage.getItem('punchlist.v2')),'{"version":2,"rows":[null]}');
 });

@@ -104,6 +104,7 @@
 
 <div id="storageWarn" class="bad" role="alert" hidden style="position:sticky;top:0;z-index:20"></div>
 <div class="wrap">
+  <div id="storageRecovery" class="card" hidden><p>기존 저장 데이터를 덮어쓰지 않았습니다. 원본을 받은 뒤 브라우저의 사이트 데이터 설정에서 이 앱 저장소를 정리할 수 있습니다. 현재 입력한 기록은 먼저 엑셀로 받아 주세요.</p><button id="rawDownloadBtn" class="btn">읽지 못한 원본 JSON 받기</button></div>
   <div id="updateNotice" class="good" hidden><span id="updateText">새 버전이 준비되었습니다.</span> <button class="btn" id="updateBtn">저장 후 새로고침</button></div>
   <p id="offlineNotice" class="note" role="status"></p>
   <div id="retentionWarn" class="bad" role="status" hidden></div>
@@ -228,7 +229,8 @@
 <script>
 (function(){
   "use strict";
-  var LS = "punchTest.v1";
+  var LS = "punchlist.v2";
+  var storageReadWarning = "", storageReadBlocked = false, unreadableRaw = null;
   var DEF = {
     site: "샘플현장",
     dongs: ["101", "102", "103"],
@@ -268,11 +270,34 @@
 
   function $(id){ return document.getElementById(id); }
   function load(){
-    var base = JSON.parse(JSON.stringify(DEF));
-    try{ var raw = localStorage.getItem(LS); if(raw){ var o = JSON.parse(raw); for(var k in o) base[k] = o[k]; } }catch(e){}
-    return base;
+    var base = JSON.parse(JSON.stringify(DEF));base.version=2;base.rows=[];
+    try{
+      var raw=localStorage.getItem(LS);if(!raw)return base;
+      unreadableRaw=raw;
+      var o=JSON.parse(raw);
+      if(!o || o.version!==2 || !Array.isArray(o.rows))throw Error('format');
+      ['site','inspector','cores','draft'].forEach(function(k){if(o[k]!==undefined){if(typeof o[k]!=='string')throw Error('format');base[k]=o[k];}});
+      ['dongs','spots','trades','phrases'].forEach(function(k){
+        if(o[k]!==undefined){if(!Array.isArray(o[k]) || !o[k].every(function(v){return typeof v==='string' && v.trim();}) || (k==='dongs'&&!o[k].length))throw Error('format');base[k]=o[k];}
+      });
+      o.rows.forEach(function(r){
+        if(!r || typeof r!=='object' || !['dong','unit','text'].every(function(k){return typeof r[k]==='string';}))throw Error('format');
+        ['core','spot','trade','createdAt','downloadRequestedAt'].forEach(function(k){if(r[k]!==undefined && typeof r[k]!=='string')throw Error('format');});
+      });
+      base.rows=o.rows;
+      if(o.current!==undefined){
+        if(!o.current || !['dong','unit','spot','trade'].every(function(k){return typeof o.current[k]==='string';}))throw Error('format');
+        base.current={dong:o.current.dong,unit:o.current.unit,spot:o.current.spot,trade:o.current.trade};
+      }
+      unreadableRaw=null;return base;
+    }catch(e){
+      storageReadWarning='저장 형식을 읽을 수 없습니다. 기존 데이터를 보존하기 위해 저장을 중지했습니다 — 새로 입력한 기록은 엑셀로 받아 주세요.';
+      storageReadBlocked=true;
+      base=JSON.parse(JSON.stringify(DEF));base.version=2;base.rows=[];return base;
+    }
   }
   function save(){
+    if(storageReadBlocked){$("storageWarn").textContent=storageReadWarning;$("storageWarn").hidden=false;return false;}
     S.version = 2;
     S.rows = rows;
     S.current = cur;
@@ -781,7 +806,9 @@
   $("saveSet").onclick = function(){
     S.site = $("siteIn").value.trim() || S.site;
     S.inspector = $("inspectorIn").value.trim();
-    S.dongs = $("dongIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+    var nextDongs = $("dongIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+    if(!nextDongs.length){flash("동 번호를 하나 이상 넣어 주세요.");$("dongIn").focus();return;}
+    S.dongs = nextDongs;
     S.cores = $("coreIn").value.trim();
     S.spots = $("spotIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
     S.trades = $("tradeIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
@@ -822,6 +849,16 @@
   document.addEventListener("focusout",function(){ setTimeout(focusActions,0); });
   if(window.visualViewport){ visualViewport.addEventListener("resize",fitKeyboard); visualViewport.addEventListener("scroll",fitKeyboard); }
   $("textIn").value = S.draft || "";
+  if(storageReadBlocked){
+    $("storageWarn").textContent=storageReadWarning;$("storageWarn").hidden=false;
+    $("storageRecovery").hidden=false;$("rawDownloadBtn").hidden=unreadableRaw===null;
+  }
+  $("rawDownloadBtn").onclick=function(){
+    if(unreadableRaw===null)return;
+    var url=URL.createObjectURL(new Blob([unreadableRaw],{type:"application/json"}));
+    var a=document.createElement("a");a.href=url;a.download="펀치리스트_저장원본.json";document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},60000);
+  };
   $("textIn").addEventListener("input",save);
   document.addEventListener("visibilitychange",function(){ if(document.hidden) save(); else maintainRetention(); });
   window.addEventListener("pageshow",maintainRetention);

@@ -588,19 +588,11 @@
       $("heard").innerHTML = gone ? ("취소: "+esc(gone.text)) : "취소할 것이 없습니다";
       paintStat(); return;
     }
-    // 동
-    var mDong = t.match(/(\d{2,3})\s*동/);
-    if(mDong){
-      cur.dong = mDong[1];
-      if(S.dongs.indexOf(cur.dong)<0){ S.dongs.push(cur.dong); save(); paintDongs(); }
-      var mUnit = t.match(/(\d{3,4})\s*호/);
-      if(mUnit) { setUnit(mUnit[1]); }
-      paintCtx(); paintDongs();
-      $("heard").innerHTML = shown; paintStat(); return;
+    // 동·호수는 음성으로 바꾸지 않는다. 잘못 인식하면 세대 전체가 어긋난다.
+    if(/\d+\s*(동|호)/.test(t) || /^\d{3,4}$/.test(t)){
+      flash("동·호수는 버튼이나 숫자판으로 지정해 주세요. 현재 세대는 바꾸지 않았습니다.");
+      paintStat(); return;
     }
-    // 호수
-    var mU = t.match(/^(\d{3,4})\s*(호)?$/);
-    if(mU){ setUnit(mU[1]); $("heard").innerHTML = shown; paintStat(); return; }
     // 앞에서부터 낱말을 떼어 위치·공종을 잡고, 남은 말을 내용으로 본다
     var tokens = t.split(/\s+/).filter(Boolean);
     var solo = tokens.length === 1;
@@ -614,7 +606,7 @@
       break;
     }
     var rest = tokens.slice(used).join(" ");
-    if(tags.length){ paintCtx(); paintSpots(); paintTrades(); }
+    if(tags.length){ save(); paintCtx(); paintSpots(); paintTrades(); }
     if(rest){
       if(!addRow(rest)){ paintStat(); return; }
       $("heard").innerHTML = shown + (tags.length ? ' <span class="fix">' + esc(tags.join(" · ")) + '</span>' : "");
@@ -630,58 +622,104 @@
 
   function say(msg){ $("heard").textContent = msg; }
 
-  /* ---------- 음성 인식 ---------- */
+  /* ---------- 음성 인식: 사용자 의도와 실제 이벤트 상태를 분리 ---------- */
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  function startMic(){
-    if(!SR){ $("micWarn").innerHTML = '<div class="bad">이 브라우저는 계속 듣기를 지원하지 않습니다. 아래 <b>직접 입력</b> 칸을 누르고 <b>자판의 마이크</b>로 말해 보세요.</div>'; return; }
-    try{
-      rec = new SR();
-      rec.lang = "ko-KR";
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.onresult = function(e){
-        for(var i=e.resultIndex;i<e.results.length;i++){
-          var r = e.results[i];
-          if(r.isFinal) handle(r[0].transcript);
-          else $("heard").textContent = "… " + r[0].transcript;
-        }
-      };
-      rec.onerror = function(e){
-        $("diag").textContent = "마지막 오류: " + e.error + " (" + new Date().toLocaleTimeString() + ")";
-        if(e.error==="not-allowed" || e.error==="service-not-allowed"){
-          $("micWarn").innerHTML = '<div class="bad">마이크 사용이 막혀 있습니다. 브라우저 주소창의 자물쇠에서 마이크를 허용하거나, 자판 마이크로 입력해 주세요.</div>';
-          stopMic();
-        }
-      };
-      rec.onend = function(){
-        if(listening){ stat.restarts++; paintStat(); try{ rec.start(); }catch(e){} }
-      };
-      rec.start();
-      listening = true;
-      startedAt = Date.now();
-      tick = setInterval(function(){ stat.up = Math.floor((Date.now()-startedAt)/1000); paintStat(); }, 1000);
-      $("micBox").classList.add("live");
-      $("micBtn").textContent = "마이크 끄기";
-      $("micWarn").innerHTML = '<div class="good">듣고 있습니다. 화면을 보지 않아도 한 줄 들어갈 때마다 짧게 진동합니다.</div>';
-      keepAwake();
-    }catch(err){
-      $("micWarn").innerHTML = '<div class="bad">마이크를 켜지 못했습니다: '+esc(err.message||err)+'</div>';
-    }
+  var micState = "대기", retries = 0, networkErrors = 0, retryTimer = null;
+  function micStatus(state,message){
+    micState = state;
+    $("micBox").classList.toggle("live", state==="듣는 중");
+    $("micBtn").textContent = listening ? "마이크 끄기" : "마이크 켜기";
+    $("micWarn").className = state==="오류" ? "bad" : "note";
+    $("micWarn").textContent = state + (message ? " — "+message : "");
+    $("micWarn").setAttribute("role","status");
   }
-  function stopMic(){
-    listening = false;
-    if(tick){ clearInterval(tick); tick = null; }
-    try{ if(rec) rec.stop(); }catch(e){}
-    $("micBox").classList.remove("live");
-    $("micBtn").textContent = "마이크 켜기";
+  function closeRecognition(){
+    var old = rec; rec = null;
+    if(old){try{old.abort();}catch(e){}}
     releaseAwake();
   }
-  var wake = null;
-  function keepAwake(){
-    try{ if(navigator.wakeLock && navigator.wakeLock.request)
-      navigator.wakeLock.request("screen").then(function(w){ wake = w; }).catch(function(){}); }catch(e){}
+  function stopMic(state,message){
+    listening = false;
+    clearTimeout(retryTimer); retryTimer = null;
+    if(tick){clearInterval(tick);tick=null;}
+    closeRecognition();
+    micStatus(state||"멈춤",message||"자판 마이크나 직접 입력도 사용할 수 있습니다.");
   }
-  function releaseAwake(){ try{ if(wake){ wake.release(); wake = null; } }catch(e){} }
+  function retryMic(message){
+    closeRecognition();
+    if(!listening)return;
+    if(document.hidden){micStatus("멈춤","화면으로 돌아오면 다시 요청합니다.");return;}
+    if(retries>=3){stopMic("오류","반복해서 끊겨 자동 재시작을 멈췄습니다. 자판 마이크로 입력해 주세요.");return;}
+    var delay = 1000*Math.pow(2,retries++);
+    micStatus("멈춤",message+" "+(delay/1000)+"초 후 다시 요청합니다.");
+    clearTimeout(retryTimer);
+    retryTimer=setTimeout(function(){retryTimer=null;if(listening&&!document.hidden){stat.restarts++;paintStat();openRecognition();}},delay);
+  }
+  function openRecognition(){
+    if(!listening || document.hidden)return;
+    micStatus("권한 요청","마이크 허용 또는 인식 시작을 기다립니다.");
+    try{
+      var instance = new SR();rec=instance;
+      instance.lang="ko-KR";instance.continuous=true;instance.interimResults=true;
+      instance.onstart=function(){
+        if(rec!==instance || !listening)return;
+        micStatus("듣는 중",navigator.vibrate ? "한 줄이 추가되면 지원 기기에서 짧게 진동합니다." : "인식한 내용을 화면에서 확인하세요.");
+        keepAwake();
+      };
+      instance.onresult=function(e){
+        if(rec!==instance || !listening)return;
+        for(var i=e.resultIndex;i<e.results.length;i++){
+          var result=e.results[i];
+          if(result.isFinal){retries=0;networkErrors=0;handle(result[0].transcript);}
+          else $("heard").textContent="… "+result[0].transcript;
+        }
+      };
+      instance.onerror=function(e){
+        if(rec!==instance || !listening)return;
+        $("diag").textContent="마지막 오류: "+e.error;
+        if(e.error==="network" && ++networkErrors>=2){stopMic("오류","네트워크 오류가 반복됩니다. 자판 마이크로 입력해 주세요.");return;}
+        if(["not-allowed","service-not-allowed","audio-capture","language-not-supported"].indexOf(e.error)>=0){
+          stopMic("오류","마이크 권한·기기 지원을 확인하거나 자판 마이크로 입력해 주세요.");return;
+        }
+        micStatus("오류","음성 인식 오류: "+e.error);
+        retryMic("음성 인식 오류: "+e.error+".");
+      };
+      instance.onend=function(){if(rec===instance && listening)retryMic("음성 인식이 멈췄습니다.");};
+      instance.start();
+    }catch(e){stopMic("오류","마이크를 켜지 못했습니다. 자판 마이크로 입력해 주세요.");}
+  }
+  function startMic(){
+    if(!SR){micStatus("오류","계속 듣기를 지원하지 않습니다. 직접 입력 칸에서 자판 마이크를 사용해 주세요.");return;}
+    if(!navigator.onLine){micStatus("오류","오프라인에서는 계속 듣기가 어려울 수 있습니다. 직접 입력이나 기기 자판 마이크를 사용해 주세요.");return;}
+    if(listening)return;
+    listening=true;retries=0;networkErrors=0;startedAt=Date.now();
+    tick=setInterval(function(){stat.up=Math.floor((Date.now()-startedAt)/1000);paintStat();},1000);
+    openRecognition();
+  }
+  var wake=null, wakeEpoch=0, wakePending=0;
+  function keepAwake(){
+    if(!listening || micState!=="듣는 중" || document.hidden || wake || wakePending || !navigator.wakeLock)return;
+    var token=++wakeEpoch;wakePending=token;
+    try{
+      navigator.wakeLock.request("screen").then(function(lock){
+        if(token!==wakeEpoch || !listening || micState!=="듣는 중" || document.hidden){Promise.resolve(lock.release()).catch(function(){});return;}
+        wake=lock;
+        lock.addEventListener("release",function(){if(wake===lock)wake=null;});
+      }).catch(function(){}).finally(function(){if(wakePending===token)wakePending=0;});
+    }catch(e){if(wakePending===token)wakePending=0;}
+  }
+  function releaseAwake(){
+    wakeEpoch++;wakePending=0;
+    var old=wake;wake=null;
+    if(old){try{Promise.resolve(old.release()).catch(function(){});}catch(e){}}
+  }
+  document.addEventListener("visibilitychange",function(){
+    if(document.hidden){clearTimeout(retryTimer);retryTimer=null;closeRecognition();if(listening)micStatus("멈춤","화면으로 돌아오면 다시 요청합니다.");}
+    else if(listening){retries=0;openRecognition();}
+  });
+  window.addEventListener("pagehide",function(){stopMic();});
+  window.addEventListener("offline",function(){if(listening)stopMic("오류","인터넷 연결이 끊겼습니다. 직접 입력이나 자판 마이크를 사용해 주세요.");});
+  micStatus("대기","위치·공종·내용을 말할 수 있습니다. 동·호수는 버튼으로 지정하세요.");
 
   /* ---------- 내보내기 ---------- */
   function rowDate(r){ return PunchExport.day(r.createdAt); }

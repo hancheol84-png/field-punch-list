@@ -127,3 +127,46 @@ test('R6: seven-day boundary, 3/1 day warning, unknown dates and download marker
  assert.equal(await page.locator('#tb tr').count(),2);
  assert.match(await page.locator('#tb').textContent(),/미상/);
 });
+
+function fakeSpeech(){
+ window.recognizers=[];window.wakeResolvers=[];window.released=0;
+ window.SpeechRecognition=class{
+  constructor(){window.recognizers.push(this);}
+  start(){this.startCount=(this.startCount||0)+1;}
+  stop(){this.onend?.();}abort(){this.onend?.();}
+ };
+ Object.defineProperty(navigator,'wakeLock',{value:{request:()=>new Promise(resolve=>window.wakeResolvers.push(()=>resolve({release:async()=>{window.released++;},addEventListener:()=>{}})))}});
+}
+test('R7: actual speech events, bounded errors, manual stop and late Wake Lock release',async t=>{
+ const page=await pageFor(t,fakeSpeech,{clock:'2026-09-22T03:00:00Z'});
+ await page.locator('#micBtn').click();assert.match(await page.locator('#micWarn').textContent(),/권한 요청/);
+ await page.evaluate(()=>recognizers[0].onstart());assert.match(await page.locator('#micWarn').textContent(),/듣는 중/);
+ await page.locator('#micBtn').click();
+ await page.evaluate(async()=>{wakeResolvers.shift()();await Promise.resolve();});
+ assert.equal(await page.evaluate(()=>released),1);
+ await page.evaluate(()=>recognizers[0].onend());await page.clock.fastForward(10000);
+ assert.equal(await page.evaluate(()=>recognizers.length),1);
+ await page.locator('#micBtn').click();
+ await page.evaluate(()=>recognizers[1].onerror({error:'network'}));
+ assert.match(await page.locator('#micWarn').textContent(),/멈춤/);
+ await page.clock.fastForward(1100);assert.equal(await page.evaluate(()=>recognizers.length),3);
+ await page.evaluate(()=>recognizers[2].onerror({error:'network'}));
+ assert.match(await page.locator('#micWarn').textContent(),/오류.*자판 마이크/);
+ await page.clock.fastForward(20000);assert.equal(await page.evaluate(()=>recognizers.length),3);
+});
+test('R7: speech cannot change unit; stale results ignored and hidden view releases lock',async t=>{
+ const page=await pageFor(t,fakeSpeech);
+ await selectUnit(page,'1503');await page.locator('#micBtn').click();
+ await page.evaluate(()=>{recognizers[0].onstart();recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'102동 1601호'}],{isFinal:true})]});});
+ assert.match(await page.locator('#ctxBig').textContent(),/101동 1503/);
+ assert.equal(await page.locator('#tb tr').count(),0);
+ await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'거실 타일 벽면 보수 필요'}],{isFinal:true})]}));
+ assert.equal(await page.locator('#tb tr').count(),1);
+ await page.evaluate(async()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));wakeResolvers.shift()();await Promise.resolve();});
+ assert.equal(await page.evaluate(()=>released),1);
+ await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+ assert.equal(await page.evaluate(()=>recognizers.length),2);
+ await page.locator('#micBtn').click();
+ await page.evaluate(()=>recognizers[1].onresult({resultIndex:0,results:[Object.assign([{transcript:'추가되면 안 되는 항목'}],{isFinal:true})]}));
+ assert.equal(await page.locator('#tb tr').count(),1);
+});

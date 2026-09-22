@@ -6,15 +6,19 @@ const http = require('node:http');
 const {chromium} = require('playwright');
 const root = path.resolve(__dirname,'..');
 let server, browser, origin;
+const serverOverrides=new Map();
 before(async () => {
   server = http.createServer((req,res) => {
-    const name = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+    let name = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+    if(name.startsWith('/field-punch-list/'))name=name.slice('/field-punch-list'.length);
     const file = path.resolve(root,'.'+(name==='/'?'/index.html':name));
     if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
     fs.readFile(file,(err,data) => {
       if(err){res.writeHead(404).end();return;}
       const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json','.webmanifest':'application/manifest+json'};
       res.setHeader('Content-Type',types[path.extname(file)]||'application/octet-stream');
+      res.setHeader('Cache-Control','no-store');
+      if(serverOverrides.has(name))data=Buffer.from(serverOverrides.get(name)(data.toString('utf8')));
       res.end(data);
     });
   });
@@ -31,7 +35,7 @@ async function pageFor(t, init, options={}){
   if(options.clock) await page.clock.install({time:new Date(options.clock)});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   t.after(()=>assert.deepEqual(errors,[]));
-  await page.goto(origin);
+  await page.goto(origin+(options.path||"/"));
   return page;
 }
 test('R2: 390px layout fits and focused input keeps add action in view',async t=>{
@@ -192,7 +196,7 @@ test('R9: unsupported or corrupt storage never overwrites original; old origin k
   localStorage.setItem('punchlist.v2','{"version":99,"rows":[]}');
   localStorage.setItem('punchTest.v1','old unrelated data');
  });
- assert.match(await page.locator('#storageWarn').textContent(),/読み|읽을 수 없습니다/);
+ assert.match(await page.locator('#storageWarn').textContent(),/읽을 수 없습니다/);
  await selectUnit(page);await page.locator('#textIn').fill('복구 전 새 입력');await page.locator('#addBtn').click();
  assert.equal(await page.evaluate(()=>localStorage.getItem('punchlist.v2')),'{"version":99,"rows":[]}');
  assert.equal(await page.evaluate(()=>localStorage.getItem('punchTest.v1')),'old unrelated data');
@@ -203,4 +207,28 @@ test('R9: unsupported or corrupt storage never overwrites original; old origin k
  const malformed=await pageFor(t,()=>localStorage.setItem('punchlist.v2','{"version":2,"rows":[null]}'));
  assert.equal(await malformed.locator('#storageWarn').isVisible(),true);
  assert.equal(await malformed.evaluate(()=>localStorage.getItem('punchlist.v2')),'{"version":2,"rows":[null]}');
+});
+
+test('R8: Pages subpath and waiting-worker update preserve draft; failed save blocks refresh',async t=>{
+ const page=await pageFor(t,null,{path:'/field-punch-list/'});
+ t.after(()=>serverOverrides.clear());
+ await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
+ assert.match(await page.evaluate(()=>navigator.serviceWorker.controller.scriptURL),/\/field-punch-list\/sw\.js$/);
+ await selectUnit(page);await page.locator('#textIn').fill('업데이트 전 초안');
+ serverOverrides.set('/sw.js',data=>data.replace(/const CACHE=PREFIX\+'v\d+';/,"const CACHE=PREFIX+'v999';"));
+ serverOverrides.set('/index.html',data=>data.replace('</head>','<meta name="release-test" content="updated"></head>'));
+ serverOverrides.set('/',serverOverrides.get('/index.html'));
+ await page.evaluate(async()=>{const reg=await navigator.serviceWorker.getRegistration();await reg.update();});
+ await page.locator('#updateNotice').waitFor({state:'visible'});
+ await page.evaluate(()=>{window.originalSet=Storage.prototype.setItem;Storage.prototype.setItem=()=>{throw Error('full');};});
+ await page.locator('#updateBtn').click();
+ assert.match(await page.locator('#updateText').textContent(),/보류/);
+ assert.equal(await page.locator('meta[name="release-test"]').count(),0);
+ await page.evaluate(()=>{Storage.prototype.setItem=window.originalSet;});
+ await page.locator('#updateBtn').click();
+ await page.locator('meta[name="release-test"]').waitFor({state:'attached'});
+ assert.equal(await page.locator('#textIn').inputValue(),'업데이트 전 초안');
+ await page.context().setOffline(true);await page.reload();
+ assert.equal(await page.locator('#textIn').inputValue(),'업데이트 전 초안');
+ assert.match(await page.locator('h1').textContent(),/현장 펀치리스트/);
 });

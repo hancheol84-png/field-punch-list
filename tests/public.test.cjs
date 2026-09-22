@@ -14,6 +14,8 @@ test('public assets have no remote runtime resources or spreadsheet files', () =
   assert.match(html, /site: "샘플현장"/);
   const data = JSON.parse(fs.readFileSync(path.join(root,'data/punch_terms.json'),'utf8'));
   assert.deepEqual(Object.keys(data['출처']), ['설명']);
+  assert.doesNotMatch(JSON.stringify(data), /[가-힣]{2,4}\s+(?:기사|대리|과장|차장|부장|팀장|사원)(?:\s|[)\]])/);
+  assert.doesNotMatch(JSON.stringify(data), /(?:\+82[- .]?)?0?1[016789][- .]?\d{3,4}[- .]?\d{4}/);
   assert.equal(fs.existsSync(path.join(root,'scripts/extract_punch_terms.py')), false);
   assert.doesNotMatch(fs.readFileSync(path.join(root,'.gitignore'),'utf8'), /^!.*xlsx/m);
 });

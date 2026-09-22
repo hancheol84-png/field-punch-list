@@ -350,3 +350,19 @@ test('R16: deletion recovery cannot extend expiry and ends after ten seconds',as
  await selectUnit(page);await page.locator('#textIn').fill('새 기록');await page.locator('#addBtn').click();await page.locator('#undoBtn').click();
  await page.clock.fastForward(11000);assert.equal(await page.locator('#restoreNotice').isVisible(),false);
 });
+
+
+test('R17: mobile cards expose full-width content and edit actions; recent item opens editor',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('벽면 줄눈 보수 필요. 입력한 내용이 한 글자씩 꺾이지 않고 읽혀야 합니다.');await page.locator('#addBtn').click();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);
+ const content=await page.locator('#tb td[data-label="내용"]').boundingBox();assert.ok(content.width>280);
+ const action=await page.locator('#tb .row-actions').boundingBox();assert.ok(action.x>=0 && action.x+action.width<=390);
+ assert.match(await page.locator('#saveState').textContent(),/저장됨/);
+ await page.locator('#listCard').screenshot({path:path.join(root,'.test-output/improved-mobile-list.png')});
+ await page.locator('#recentEntry').screenshot({path:path.join(root,'.test-output/improved-recent.png')});
+ await page.locator('#recentEdit').click();assert.equal(await page.locator('#editDialog').isVisible(),true);
+ await page.locator('#editDialog').screenshot({path:path.join(root,'.test-output/improved-mobile-edit.png')});await page.locator('#editCancel').click();
+ await page.emulateMedia({colorScheme:'dark'});await page.locator('#listCard').screenshot({path:path.join(root,'.test-output/improved-mobile-dark.png')});
+ await page.setViewportSize({width:1280,height:900});assert.equal(await page.locator('#tbl').evaluate(e=>getComputedStyle(e).display),'table');
+ await page.locator('#listCard').screenshot({path:path.join(root,'.test-output/improved-desktop-list.png')});
+});

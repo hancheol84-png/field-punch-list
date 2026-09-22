@@ -101,6 +101,25 @@
   dialog{width:min(92vw,480px);max-height:85dvh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--card);color:var(--ink)}
   dialog::backdrop{background:rgba(0,0,0,.45)}
   dialog h2{font-size:20px;margin:0 0 12px}dialog .row{margin-top:16px}dialog label{margin-top:12px}
+  @media(min-width:900px){.wrap{max-width:1040px}#tbl{font-size:14px}#tbl th{white-space:nowrap}#tbl th:nth-child(7){width:34%}#tbl th:last-child{min-width:125px}}
+  .row-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .recent{margin-top:12px;padding:12px;background:var(--soft);border-radius:8px}
+  .recent p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+  #recentText{max-height:140px;overflow:auto}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  dialog .row{position:sticky;bottom:-20px;background:var(--card);padding:12px 0;margin-bottom:0}
+  @media(max-width:899px){
+    .tbl{border:0;overflow:visible}#tbl{display:block}#tbl thead{display:none}
+    #tb{display:grid;gap:12px}#tb tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+    #tb td{display:block;border:0;padding:0;white-space:normal;min-width:0;overflow-wrap:anywhere;font-family:var(--sans);font-size:15px}
+    #tb td[data-label]::before{content:attr(data-label);display:block;font-size:12px;font-weight:400;color:var(--ink2)}
+    #tb td[data-label="동"]{order:0;font-weight:700}#tb td[data-label="호수"]{order:1;font-weight:700}
+    #tb td[data-label="위치"]{order:2}#tb td[data-label="공종"]{order:3}
+    #tb td[data-label="내용"]{order:4;grid-column:1/-1;white-space:pre-wrap;font-size:16px;line-height:1.6}
+    #tb td[data-label="점검일"]{order:5;font-size:13px}#tb td[data-label="코어"]{order:6;font-size:13px}
+    #tb td[data-label="파일 받기"]{order:7;grid-column:1/-1;font-size:13px}
+    #tb td.row-actions{order:8;grid-column:1/-1;display:flex;justify-content:flex-end;border-top:1px solid var(--line);padding-top:8px}
+  }
 </style>
 </head>
 <body>
@@ -173,13 +192,16 @@
       <div id="inputWarn" class="bad" role="alert" hidden></div>
       <textarea id="textIn" placeholder="예) 우측벽 좌측하단 골조 턱짐 할석미장"></textarea>
     </div>
+    <p id="saveState" class="note" role="status">입력하면 이 기기에 저장합니다.</p>
     <div class="action-slot"><div class="row input-actions" style="margin-top:10px">
       <button class="btn pri wide" id="addBtn">한 줄 추가</button>
     </div></div>
   </div>
 
+  <div id="recentEntry" class="recent" hidden><div class="row" style="justify-content:space-between"><strong>최근 등록</strong><button id="recentEdit" class="btn sm">바로 수정</button></div><p id="recentContext" class="note"></p><p id="recentText"></p></div>
+
   <!-- 목록 -->
-  <div class="card">
+  <div class="card" id="listCard">
     <div class="row" style="justify-content:space-between">
       <p class="sec-t" style="margin:0">쌓인 목록 <span id="cnt" class="note"></span></p>
       <div class="row">
@@ -346,26 +368,26 @@
     }
   }
   function save(){
-    if(!canEdit())return false;
-    if(storageReadBlocked){$("storageWarn").textContent=storageReadWarning;$("storageWarn").hidden=false;return false;}
+    if(!canEdit()){$("saveState").textContent="읽기 전용 · 이 창에서는 저장하지 않습니다.";return false;}
+    if(storageReadBlocked){$("storageWarn").textContent=storageReadWarning;$("storageWarn").hidden=false;$("saveState").textContent="저장 중지 · 기록은 엑셀로, 초안은 따로 보관하세요.";return false;}
     S.version = 2;
     S.rows = rows;
     S.current = cur;
     S.draft = $("textIn").value;
     try{
       if(localStorage.getItem(LS)!==lastStoredRaw){
-        staleStorage=true;
+        staleStorage=true;$("saveState").textContent="다른 창의 변경으로 저장을 멈췄습니다.";
         protectEditor("다른 창에서 기록이 바뀌어 저장을 멈췄습니다. 이 창의 기록은 엑셀로 받고, 입력 중 내용은 따로 복사한 뒤 새로고침하세요.");
         stopMic("멈춤","다른 창의 기록을 덮어쓰지 않도록 입력을 멈췄습니다.");
         return false;
       }
       var serialized=JSON.stringify(S);
       localStorage.setItem(LS, serialized);lastStoredRaw=serialized;
-      $("storageWarn").hidden = true;
+      $("storageWarn").hidden = true;$("saveState").textContent="이 기기에 저장됨 · 중요한 기록은 엑셀로 받아 두세요.";
       return true;
     }catch(e){
       $("storageWarn").textContent = "이 기기에 저장되지 않았습니다 — 지금 엑셀로 받아 두세요. 입력 중인 내용도 따로 보관해 주세요.";
-      $("storageWarn").hidden = false;
+      $("storageWarn").hidden = false;$("saveState").textContent="저장 실패 · 현재 화면을 닫기 전에 엑셀로 받아 주세요.";
       return false;
     }
   }
@@ -589,8 +611,9 @@
     sorted.forEach(function(r){
       var tr = document.createElement("tr");
       tr.innerHTML = '<td class="n">'+esc(rowDate(r))+'</td><td class="n">'+esc(r.dong)+'</td><td class="n">'+esc(r.core||"")+'</td>'+
-        '<td class="n">'+esc(r.unit)+'</td><td>'+esc(r.spot||"")+'</td><td>'+esc(r.trade||"")+'</td>'+
+        '<td class="n">'+esc(r.unit)+'</td><td>'+esc(r.spot||"미지정")+'</td><td>'+esc(r.trade||"미지정")+'</td>'+
         '<td>'+esc(r.text)+'</td><td>'+esc(r.downloadRequestedAt ? '요청 '+PunchExport.day(r.downloadRequestedAt) : '아직 안 받음')+'</td>';
+      Array.from(tr.children).forEach(function(cell,i){cell.dataset.label=["점검일","동","코어","호수","위치","공종","내용","파일 받기"][i];});
       var td = document.createElement("td");td.className="row-actions";
       var edit=document.createElement("button");edit.className="btn sm";edit.textContent="수정";edit.disabled=!canEdit();
       edit.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 항목 수정");edit.onclick=function(){openRowEditor(r);};td.appendChild(edit);
@@ -602,7 +625,11 @@
     });
     $("cnt").textContent = rows.length ? rows.length+"건" : "";
     paintRetention();
+    var recent=rows[rows.length-1];$("recentEntry").hidden=!recent;
+    if(recent){$("recentContext").textContent=recent.dong+"동 "+recent.unit+"호 · "+(recent.spot||"위치 미지정")+" · "+(recent.trade||"공종 미지정");$("recentText").textContent=recent.text;}
+    $("recentEdit").disabled=!canEdit();
   }
+  $("recentEdit").onclick=function(){var recent=rows[rows.length-1];if(recent)openRowEditor(recent);};
   function clearDeletedAction(){deletedAction=null;clearTimeout(restoreTimer);$("restoreNotice").hidden=true;}
   function deleteRecords(items){
     if(!canEdit())return;
@@ -931,7 +958,7 @@
   $("undoBtn").onclick = function(){var g=rows[rows.length-1];if(g)deleteRecords([g]);else flash("삭제할 항목이 없습니다.");};
   $("unitGo").onclick = function(){ setUnit($("unitIn").value); };
   $("unitIn").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); setUnit(this.value); } });
-  $("addBtn").onclick = function(){ var el = $("textIn"); var f = fixWords(el.value); stat.fixed += f.changed; if(addRow(f.text)){ el.value=""; save(); } paintStat(); };
+  $("addBtn").onclick = function(){ var el = $("textIn"); var f = fixWords(el.value); stat.fixed += f.changed; if(addRow(f.text)){ el.value=""; save();if(document.activeElement!==el)document.body.classList.remove("editing"); } paintStat(); };
   $("textIn").addEventListener("keydown", function(e){
     if(e.key==="Enter" && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); $("addBtn").click(); }
   });

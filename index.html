@@ -237,6 +237,16 @@
   </div>
 </div>
 
+<dialog id="editDialog" aria-labelledby="editTitle">
+  <h2 id="editTitle">항목 수정</h2><p class="note">수정 중에는 음성 인식을 잠시 멈춥니다. 입력일과 7일 보관 기간은 유지됩니다.</p>
+  <p id="editWarn" class="bad" role="alert" hidden></p>
+  <label class="f" for="editDong">동</label><select id="editDong"></select>
+  <label class="f" for="editUnit">호수</label><input id="editUnit" inputmode="numeric">
+  <label class="f" for="editSpot">위치</label><input id="editSpot" list="spotChoices"><datalist id="spotChoices"></datalist>
+  <label class="f" for="editTrade">공종</label><input id="editTrade" list="tradeChoices"><datalist id="tradeChoices"></datalist>
+  <label class="f" for="editText">내용</label><textarea id="editText" rows="4"></textarea>
+  <div class="row"><button class="btn pri" id="editSave">수정 저장</button><button class="btn" id="editCancel">취소</button></div>
+</dialog>
 <dialog id="contextDialog" aria-labelledby="contextTitle">
   <h2 id="contextTitle">작성 중인 내용이 있습니다</h2><p id="contextMessage"></p>
   <div class="row"><button id="draftSaveMove" class="btn pri">현재 세대에 등록하고 이동</button><button id="draftCarry" class="btn">새 세대로 내용 옮기기</button><button id="draftStay" class="btn">여기서 계속 작성</button></div>
@@ -257,8 +267,8 @@
   function protectEditor(message){
     $("editGuard").hidden=false;$("editGuardText").textContent=message;
     document.querySelectorAll("button,input,textarea,select").forEach(function(el){
-      if(el.id==="textIn"){el.readOnly=true;return;}
-      if(["downloadBtn","copyBtn","copyText","rawDownloadBtn","reloadGuard"].indexOf(el.id)<0)el.disabled=true;
+      if(el.tagName==="TEXTAREA"){el.readOnly=true;return;}
+      if(["downloadBtn","copyBtn","copyText","rawDownloadBtn","reloadGuard","editCancel","draftStay"].indexOf(el.id)<0)el.disabled=true;
     });
   }
   function canEdit(){return hasEditLock && !staleStorage;}
@@ -304,6 +314,7 @@
   var cur = S.current || {dong: S.dongs[0], unit:"", spot:"", trade:""};
   var stat = {up:0, restarts:0, heard:0, fixed:0};
   var rec = null, listening = false, startedAt = 0, tick = null;
+  var editingRow=null;
 
   function $(id){ return document.getElementById(id); }
   function load(){
@@ -579,7 +590,9 @@
       tr.innerHTML = '<td class="n">'+esc(rowDate(r))+'</td><td class="n">'+esc(r.dong)+'</td><td class="n">'+esc(r.core||"")+'</td>'+
         '<td class="n">'+esc(r.unit)+'</td><td>'+esc(r.spot||"")+'</td><td>'+esc(r.trade||"")+'</td>'+
         '<td>'+esc(r.text)+'</td><td>'+esc(r.downloadRequestedAt ? '요청 '+PunchExport.day(r.downloadRequestedAt) : '아직 안 받음')+'</td>';
-      var td = document.createElement("td");
+      var td = document.createElement("td");td.className="row-actions";
+      var edit=document.createElement("button");edit.className="btn sm";edit.textContent="수정";edit.disabled=!canEdit();
+      edit.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 항목 수정");edit.onclick=function(){openRowEditor(r);};td.appendChild(edit);
       var x = document.createElement("button"); x.disabled=!canEdit();
       x.className = "del"; x.innerHTML = "&times;"; x.title = "지우기";
       x.onclick = function(){ rows.splice(rows.indexOf(r),1); save(); paintRows(); };
@@ -589,6 +602,33 @@
     $("cnt").textContent = rows.length ? rows.length+"건" : "";
     paintRetention();
   }
+  function openRowEditor(row){
+    if(!canEdit())return;
+    maintainRetention();if(rows.indexOf(row)<0)return;
+    editingRow=row;clearTimeout(retryTimer);retryTimer=null;closeRecognition();
+    if(listening)micStatus("멈춤","항목 수정이 끝나면 다시 듣습니다.");
+    $("editWarn").hidden=true;
+    $("editDong").innerHTML=Array.from(new Set(S.dongs.concat([row.dong]))).map(function(v){return '<option>'+esc(v)+'</option>';}).join("");
+    $("editDong").value=row.dong;$("editUnit").value=row.unit;$("editSpot").value=row.spot||"";$("editTrade").value=row.trade||"";$("editText").value=row.text;
+    $("spotChoices").innerHTML=S.spots.map(function(v){return '<option>'+esc(v)+'</option>';}).join("");
+    $("tradeChoices").innerHTML=S.trades.map(function(v){return '<option>'+esc(v)+'</option>';}).join("");
+    $("editDialog").showModal();
+  }
+  function closeRowEditor(){editingRow=null;$("editDialog").close();if(listening)openRecognition();}
+  $("editCancel").onclick=closeRowEditor;
+  $("editDialog").addEventListener("cancel",function(e){e.preventDefault();closeRowEditor();});
+  $("editSave").onclick=function(){
+    if(!canEdit())return;
+    maintainRetention();
+    var patch={dong:$("editDong").value,unit:$("editUnit").value.trim(),spot:$("editSpot").value.trim(),trade:$("editTrade").value.trim(),text:$("editText").value.trim()};
+    var error=rows.indexOf(editingRow)<0 ? "이 항목은 이미 삭제되었거나 7일 보관 기간이 지났습니다. 필요한 내용은 따로 복사하세요." : "";
+    if(!error && (!/^\d+$/.test(patch.unit) || !patch.text))error="호수는 숫자로, 내용은 공백 없이 입력해 주세요.";
+    if(!error && Object.values(patch).some(function(v){return v.length>32767;}))error="엑셀에 넣을 수 있도록 각 항목을 32,767자 이하로 줄여 주세요.";
+    if(error){$("editWarn").textContent=error;$("editWarn").hidden=false;return;}
+    patch.core=coreOf(patch.unit);
+    Object.assign(editingRow,patch);delete editingRow.downloadRequestedAt;
+    save();paintRows();closeRowEditor();flash("수정했습니다. 변경한 내용은 엑셀로 다시 받아 주세요.");
+  };
   var RETENTION = 7*24*60*60*1000;
   function paintRetention(){
     var groups = {}, unknown = 0;
@@ -640,7 +680,8 @@
     applyContext(next);
   }
   function finishContext(action){
-    if(!pendingContext || !canEdit())return;
+    if(!pendingContext)return;
+    if(!canEdit()){if(action==="stay"){pendingContext=null;$("contextDialog").close();}return;}
     var next=pendingContext;
     if(action==="save"){
       if(!addRow($("textIn").value))return;
@@ -773,7 +814,7 @@
     retryTimer=setTimeout(function(){retryTimer=null;if(listening&&!document.hidden){stat.restarts++;paintStat();openRecognition();}},delay);
   }
   function openRecognition(){
-    if(!listening || document.hidden)return;
+    if(!listening || document.hidden || editingRow || pendingContext)return;
     micStatus("권한 요청","마이크 허용 또는 인식 시작을 기다립니다.");
     try{
       var instance = new SR();rec=instance;

@@ -116,7 +116,7 @@ test('R4: browser downloads a real XLSX and failed clipboard shows selectable fa
 
 test('R6: seven-day boundary, 3/1 day warning, unknown dates and download marker',async t=>{
  const page=await pageFor(t,()=>{
-   const age=n=>new Date(Date.now()-n*86400000).toISOString();
+   const age=n=>new Date(Date.parse('2026-09-22T03:00:00Z')-n*86400000).toISOString();
    localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[
     {dong:'101',unit:'1501',text:'만료',createdAt:age(7)},
     {dong:'101',unit:'1502',text:'일일',createdAt:age(6)},
@@ -308,4 +308,25 @@ test('R14: oversize input remains a draft and cannot block workbook generation',
  await page.locator('#textIn').fill('수정한 내용');await page.locator('#addBtn').click();
  const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
  assert.equal(await page.locator('#exportWarn').isVisible(),false);
+});
+
+
+test('R15: editing fixes record and core without extending retention; draft stays intact',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#textIn').fill('고칠 내용');await page.locator('#addBtn').click();
+ const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].createdAt);
+ const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
+ await page.locator('#textIn').fill('다음 항목 초안');await page.locator('#micBtn').click();
+ await page.locator('#tb button').filter({hasText:'수정'}).first().click();
+ await page.locator('#editUnit').fill('1401');await page.locator('#editText').fill('수정한 내용');await page.locator('#editSave').click();
+ const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));
+ assert.equal(saved.rows[0].createdAt,before);assert.equal(saved.rows[0].core,'1코어');assert.equal(saved.rows[0].unit,'1401');assert.equal(saved.rows[0].text,'수정한 내용');
+ assert.equal(saved.rows[0].downloadRequestedAt,undefined);assert.equal(saved.draft,'다음 항목 초안');
+ await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'오래된 결과'}],{isFinal:true})]}));
+ assert.equal(await page.locator('#tb tr').count(),1);assert.equal(await page.evaluate(()=>recognizers.length),2);
+ await page.reload();assert.match(await page.locator('#tb').textContent(),/수정한 내용/);
+});
+test('R15: edit cannot revive a record expiring while the dialog is open',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'만료 직전',createdAt:new Date(Date.parse('2026-09-22T03:00:00Z')-7*86400000+10000).toISOString()}]})),{clock:'2026-09-22T03:00:00Z'});
+ await page.locator('#tb button').filter({hasText:'수정'}).click();await page.clock.fastForward(11000);await page.locator('#editSave').click();
+ assert.match(await page.locator('#editWarn').textContent(),/보관 기간/);assert.equal(await page.locator('#tb tr').count(),0);
 });

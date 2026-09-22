@@ -105,6 +105,7 @@
 </head>
 <body>
 
+<div id="restoreNotice" class="good" role="status" hidden style="position:sticky;top:0;z-index:21"><span id="restoreMessage"></span> <button id="restoreBtn" class="btn">삭제 되돌리기</button></div>
 <div id="editGuard" class="bad" role="status" hidden><span id="editGuardText"></span> <button id="reloadGuard" class="btn">이 창 새로고침</button></div>
 <div id="storageWarn" class="bad" role="alert" hidden style="position:sticky;top:0;z-index:20"></div>
 <div class="wrap">
@@ -134,7 +135,7 @@
     <div class="mic" id="micBox">
       <span class="dot"></span>
       <button class="btn pri wide" id="micBtn">마이크 켜기</button>
-      <button class="btn sm" id="undoBtn">방금 취소</button>
+      <button class="btn sm" id="undoBtn">최근 등록 삭제</button>
     </div>
     <div class="heard" id="heard">마이크를 켜고 <b>“침실3”</b>, <b>“골조할석”</b>, <b>“우측벽 상부 턱짐 그라인딩 필요”</b> 처럼 말해 보세요.</div>
     <div id="micWarn"></div>
@@ -314,7 +315,7 @@
   var cur = S.current || {dong: S.dongs[0], unit:"", spot:"", trade:""};
   var stat = {up:0, restarts:0, heard:0, fixed:0};
   var rec = null, listening = false, startedAt = 0, tick = null;
-  var editingRow=null;
+  var editingRow=null, deletedAction=null, restoreTimer=null;
 
   function $(id){ return document.getElementById(id); }
   function load(){
@@ -594,14 +595,38 @@
       var edit=document.createElement("button");edit.className="btn sm";edit.textContent="수정";edit.disabled=!canEdit();
       edit.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 항목 수정");edit.onclick=function(){openRowEditor(r);};td.appendChild(edit);
       var x = document.createElement("button"); x.disabled=!canEdit();
-      x.className = "del"; x.innerHTML = "&times;"; x.title = "지우기";
-      x.onclick = function(){ rows.splice(rows.indexOf(r),1); save(); paintRows(); };
+      x.className = "btn sm del"; x.textContent = "삭제"; x.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 항목 삭제");
+      x.onclick = function(){ deleteRecords([r]); };
       td.appendChild(x); tr.appendChild(td);
       tb.appendChild(tr);
     });
     $("cnt").textContent = rows.length ? rows.length+"건" : "";
     paintRetention();
   }
+  function clearDeletedAction(){deletedAction=null;clearTimeout(restoreTimer);$("restoreNotice").hidden=true;}
+  function deleteRecords(items){
+    if(!canEdit())return;
+    var entries=items.map(function(row){return {row:row,index:rows.indexOf(row)};}).filter(function(e){return e.index>=0;});
+    if(!entries.length){flash("삭제할 항목이 없습니다.");return;}
+    rows=rows.filter(function(row){return items.indexOf(row)<0;});
+    clearDeletedAction();deletedAction={entries:entries,until:Date.now()+10000};
+    $("restoreMessage").textContent=entries.length+"건 삭제 · 10초 안에 되돌릴 수 있습니다. 새로고침하면 복구할 수 없습니다.";
+    $("restoreNotice").hidden=false;restoreTimer=setTimeout(clearDeletedAction,10000);
+    save();paintRows();
+  }
+  $("restoreBtn").onclick=function(){
+    if(!canEdit() || !deletedAction)return;
+    var action=deletedAction;
+    if(Date.now()>=action.until){clearDeletedAction();return;}
+    var now=Date.now(), restored=0;
+    action.entries.sort(function(a,b){return a.index-b.index;}).forEach(function(e){
+      var time=typeof e.row.createdAt==="string" ? Date.parse(e.row.createdAt) : NaN;
+      if(Number.isFinite(time) && now-time>=RETENTION)return;
+      rows.splice(Math.min(e.index,rows.length),0,e.row);restored++;
+    });
+    clearDeletedAction();save();paintRows();
+    flash(restored ? restored+"건을 되돌렸습니다. 원래 입력일을 유지합니다." : "7일 보관 기간이 지나 복구할 수 없습니다.");
+  };
   function openRowEditor(row){
     if(!canEdit())return;
     maintainRetention();if(rows.indexOf(row)<0)return;
@@ -742,7 +767,7 @@
 
     // 취소
     if(/^(취소|방금 ?취소|지워|삭제)$/.test(t.replace(/\s+/g,""))){
-      var gone = rows.pop(); save(); paintRows();
+      var gone = rows[rows.length-1];if(gone)deleteRecords([gone]);
       $("heard").innerHTML = gone ? ("취소: "+esc(gone.text)) : "취소할 것이 없습니다";
       paintStat(); return;
     }
@@ -903,7 +928,7 @@
 
   /* ---------- 붙이기 ---------- */
   $("micBtn").onclick = function(){ listening ? stopMic() : startMic(); };
-  $("undoBtn").onclick = function(){ var g = rows.pop(); save(); paintRows(); flash(g ? "취소: "+g.text : "취소할 것이 없습니다"); };
+  $("undoBtn").onclick = function(){var g=rows[rows.length-1];if(g)deleteRecords([g]);else flash("삭제할 항목이 없습니다.");};
   $("unitGo").onclick = function(){ setUnit($("unitIn").value); };
   $("unitIn").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); setUnit(this.value); } });
   $("addBtn").onclick = function(){ var el = $("textIn"); var f = fixWords(el.value); stat.fixed += f.changed; if(addRow(f.text)){ el.value=""; save(); } paintStat(); };
@@ -934,7 +959,7 @@
   }
   $("clearBtn").onclick = function(){
     if(!rows.length) return;
-    if(confirm("쌓인 "+rows.length+"건을 모두 지울까요?")){ rows = []; save(); paintRows(); }
+    if(canEdit() && confirm("쌓인 "+rows.length+"건을 모두 지울까요?")){deleteRecords(rows.slice());}
   };
   function settingsError(next){
     if(!next.dongs.length)return "동 번호를 하나 이상 넣어 주세요.";
@@ -970,6 +995,7 @@
       $("setupWarn").textContent="작성 중인 내용을 등록하거나 비운 뒤 현재 동을 목록에서 제외해 주세요.";$("setupWarn").hidden=false;return;
     }
     if(next.dongs.indexOf(cur.dong)<0)stopMic();
+    if(next.site!==S.site)clearDeletedAction();
     Object.assign(S,next);
     if(S.dongs.indexOf(cur.dong)<0){cur.dong=S.dongs[0];cur.unit="";}
     if(S.spots.indexOf(cur.spot)<0)cur.spot="";
@@ -983,6 +1009,7 @@
     if(rows.length && S.site!==DEF.site){$("setupWarn").textContent="기록이 남아 있어 현장명을 초기화하지 않았습니다. 필요한 엑셀을 받고 목록을 비운 뒤 다시 시도하세요.";$("setupWarn").hidden=false;return;}
     if($("textIn").value.trim()){$("setupWarn").textContent="작성 중인 내용을 등록하거나 비운 뒤 세팅을 초기화해 주세요.";$("setupWarn").hidden=false;return;}
     stopMic();
+    clearDeletedAction();
     var keep = rows;
     S = JSON.parse(JSON.stringify(DEF)); rows = keep; cur={dong:S.dongs[0],unit:"",spot:"",trade:""}; save(); paintAll();
   };

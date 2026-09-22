@@ -330,3 +330,23 @@ test('R15: edit cannot revive a record expiring while the dialog is open',async 
  await page.locator('#tb button').filter({hasText:'수정'}).click();await page.clock.fastForward(11000);await page.locator('#editSave').click();
  assert.match(await page.locator('#editWarn').textContent(),/보관 기간/);assert.equal(await page.locator('#tb tr').count(),0);
 });
+
+
+test('R16: single and all deletion can be restored without changing insertion order or dates',async t=>{
+ const page=await pageFor(t);await selectUnit(page,'1401');await page.locator('#textIn').fill('먼저 입력');await page.locator('#addBtn').click();
+ await selectUnit(page,'1501');await page.locator('#textIn').fill('나중 입력');await page.locator('#addBtn').click();
+ const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows);
+ await page.locator('#tb tr').first().getByRole('button',{name:/항목 삭제/}).click();await page.locator('#restoreBtn').click();
+ assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows),before);
+ await page.locator('#undoBtn').click();assert.match(await page.locator('#tb').textContent(),/먼저 입력/);assert.doesNotMatch(await page.locator('#tb').textContent(),/나중 입력/);
+ await page.locator('#restoreBtn').click();
+ page.once('dialog',d=>d.accept());await page.locator('#clearBtn').click();assert.equal(await page.locator('#tb tr').count(),0);
+ await page.locator('#restoreBtn').click();assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows),before);
+});
+test('R16: deletion recovery cannot extend expiry and ends after ten seconds',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'만료 직전',createdAt:'2026-09-15T03:00:03Z'}]})),{clock:'2026-09-22T03:00:00Z'});
+ await page.locator('#undoBtn').click();await page.clock.fastForward(4000);await page.locator('#restoreBtn').click();
+ assert.equal(await page.locator('#tb tr').count(),0);assert.match(await page.locator('#heard').textContent(),/보관 기간/);
+ await selectUnit(page);await page.locator('#textIn').fill('새 기록');await page.locator('#addBtn').click();await page.locator('#undoBtn').click();
+ await page.clock.fastForward(11000);assert.equal(await page.locator('#restoreNotice').isVisible(),false);
+});

@@ -255,3 +255,25 @@ test('R11: external storage change blocks stale save but preserves local export'
  assert.equal(await page.locator('#addBtn').isDisabled(),true);
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].text),'다른 창 기록');
 });
+
+
+test('R12: whitespace choices and duplicate cores cannot damage saved settings',async t=>{
+ const page=await pageFor(t);await selectUnit(page);
+ for(const name of ['＋ 위치','＋ 공종','＋']){
+  page.once('dialog',d=>d.accept('   '));await page.getByRole('button',{name,exact:true}).click();
+ }
+ await page.reload();assert.equal(await page.locator('#storageRecovery').isVisible(),false);
+ await page.locator('#setup summary').click();await page.locator('#siteIn').fill('가상 현장');
+ await page.locator('#coreIn').fill('1코어=01; 2코어=01');await page.locator('#saveSet').click();
+ assert.match(await page.locator('#setupWarn').textContent(),/중복/);
+ await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).site),'샘플현장');
+});
+test('R12: site rename requires explicit acknowledgement while records exist',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('보수');await page.locator('#addBtn').click();
+ await page.locator('#setup summary').click();await page.locator('#siteIn').fill('가상 현장');
+ page.once('dialog',d=>d.dismiss());await page.locator('#saveSet').click();
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).site),'샘플현장');
+ page.once('dialog',d=>d.accept());await page.locator('#saveSet').click();
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).site),'가상 현장');
+});

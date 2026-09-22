@@ -199,6 +199,7 @@
   <div class="card">
     <details id="setup">
       <summary>현장 세팅</summary>
+      <p id="setupWarn" class="bad" role="alert" hidden></p>
       <div style="display:grid;gap:12px">
         <div><label class="f" for="siteIn">현장명</label><input id="siteIn"></div>
         <div><label class="f" for="inspectorIn">점검인 (선택·이 기기에만 저장)</label><input id="inspectorIn"></div>
@@ -496,18 +497,26 @@
     }
   }
 
+  function newChoice(list,label){
+    if(!canEdit())return null;
+    var v=prompt(label);if(v===null)return null;v=v.trim();
+    if(!v){flash("공백만 입력할 수 없습니다.");return null;}
+    if(v.length>32767){flash("항목은 32,767자 이하로 입력하세요.");return null;}
+    if(list.indexOf(v)>=0){flash("이미 있는 항목입니다.");return null;}
+    return v;
+  }
   function paintDongs(){
     chips($("dongs"), S.dongs, cur.dong, function(v){ cur.dong=v; save(); paintCtx(); paintDongs(); }, "＋", function(){
-      var v = prompt("동 번호"); if(v){ S.dongs.push(v.trim()); cur.dong=v.trim(); save(); paintDongs(); paintCtx(); }
+      var v=newChoice(S.dongs,"동 번호");if(v){S.dongs.push(v);cur.dong=v;save();paintDongs();paintCtx();}
     });
   }
   function paintSpots(){
     chips($("spots"), S.spots, cur.spot, function(v){ cur.spot = (cur.spot===v ? "" : v); save(); paintCtx(); paintSpots(); },
-      "＋ 위치", function(){ var v=prompt("위치 이름"); if(v){ S.spots.push(v.trim()); cur.spot=v.trim(); save(); paintSpots(); paintCtx(); } });
+      "＋ 위치", function(){var v=newChoice(S.spots,"위치 이름");if(v){S.spots.push(v);cur.spot=v;save();paintSpots();paintCtx();}});
   }
   function paintTrades(){
     chips($("trades"), S.trades, cur.trade, function(v){ cur.trade = (cur.trade===v ? "" : v); save(); paintCtx(); paintTrades(); },
-      "＋ 공종", function(){ var v=prompt("공종 이름"); if(v){ S.trades.push(v.trim()); cur.trade=v.trim(); save(); paintTrades(); paintCtx(); } });
+      "＋ 공종", function(){var v=newChoice(S.trades,"공종 이름");if(v){S.trades.push(v);cur.trade=v;save();paintTrades();paintCtx();}});
   }
   function paintPhrases(){
     var host = $("phrases");
@@ -841,24 +850,49 @@
     if(!rows.length) return;
     if(confirm("쌓인 "+rows.length+"건을 모두 지울까요?")){ rows = []; save(); paintRows(); }
   };
+  function settingsError(next){
+    if(!next.dongs.length)return "동 번호를 하나 이상 넣어 주세요.";
+    for(var key of ["dongs","spots","trades","phrases"]){
+      if(new Set(next[key]).size!==next[key].length)return "동·위치·공종·문구의 중복 항목을 정리해 주세요.";
+      if(next[key].some(function(v){return v.length>32767;}))return "항목은 32,767자 이하로 입력하세요.";
+    }
+    if(next.site.length>32767 || next.inspector.length>32767)return "현장명·점검인은 32,767자 이하로 입력하세요.";
+    var used=new Set();
+    if(next.cores){
+      for(var part of next.cores.split(";")){
+        var pair=part.trim().split("=");
+        if(pair.length!==2 || !pair[0].trim() || !pair[1].trim())return "코어는 1코어=01,02; 2코어=03,04 형식으로 입력하세요.";
+        for(var line of pair[1].split(",")){
+          line=line.trim();
+          if(!/^\d{1,2}$/.test(line) || Number(line)<1 || used.has(Number(line)))return "코어 호수는 01~99 범위에서 중복 없이 입력하세요.";
+          used.add(Number(line));
+        }
+      }
+    }
+    return "";
+  }
   $("saveSet").onclick = function(){
-    S.site = $("siteIn").value.trim() || S.site;
-    S.inspector = $("inspectorIn").value.trim();
-    var nextDongs = $("dongIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
-    if(!nextDongs.length){flash("동 번호를 하나 이상 넣어 주세요.");$("dongIn").focus();return;}
-    S.dongs = nextDongs;
-    S.cores = $("coreIn").value.trim();
-    S.spots = $("spotIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
-    S.trades = $("tradeIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
-    S.phrases = $("phraseIn").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
-    if(S.dongs.indexOf(cur.dong)<0) cur.dong = S.dongs[0] || cur.dong;
-    save(); paintAll();
-    $("setup").open = false;
+    if(!canEdit())return;
+    var next={site:$("siteIn").value.trim()||S.site,inspector:$("inspectorIn").value.trim(),cores:$("coreIn").value.trim()};
+    [["dongs","dongIn"],["spots","spotIn"],["trades","tradeIn"],["phrases","phraseIn"]].forEach(function(pair){
+      next[pair[0]]=$(pair[1]).value.split(",").map(function(v){return v.trim();}).filter(Boolean);
+    });
+    var error=settingsError(next);
+    if(error){$("setupWarn").textContent=error;$("setupWarn").hidden=false;return;}
+    if(rows.length && next.site!==S.site && !confirm("기존 "+rows.length+"건도 새 현장명으로 출력됩니다. 같은 현장의 이름을 수정하는 경우에만 확인하세요. 다른 현장이라면 취소 후 엑셀로 받고 목록을 비워 주세요."))return;
+    Object.assign(S,next);
+    if(S.dongs.indexOf(cur.dong)<0){cur.dong=S.dongs[0];cur.unit="";}
+    if(S.spots.indexOf(cur.spot)<0)cur.spot="";
+    if(S.trades.indexOf(cur.trade)<0)cur.trade="";
+    $("setupWarn").hidden=true;
+    save();paintAll();$("setup").open=false;
   };
   $("resetSet").onclick = function(){
     if(!confirm("세팅을 처음 값으로 되돌릴까요? (쌓인 목록은 그대로)")) return;
+    if(!canEdit())return;
+    if(rows.length && S.site!==DEF.site){$("setupWarn").textContent="기록이 남아 있어 현장명을 초기화하지 않았습니다. 필요한 엑셀을 받고 목록을 비운 뒤 다시 시도하세요.";$("setupWarn").hidden=false;return;}
     var keep = rows;
-    S = JSON.parse(JSON.stringify(DEF)); rows = keep; save(); paintAll();
+    S = JSON.parse(JSON.stringify(DEF)); rows = keep; cur={dong:S.dongs[0],unit:"",spot:"",trade:""}; save(); paintAll();
   };
 
   function paintSetupFields(){

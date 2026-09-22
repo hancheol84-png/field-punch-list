@@ -299,3 +299,13 @@ test('R13: late speech from previous unit is ignored after unit transition',asyn
  await page.evaluate(()=>recognizers[1].onresult({resultIndex:0,results:[Object.assign([{transcript:'벽면 보수'}],{isFinal:true})]}));
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].unit),'1403');
 });
+
+
+test('R14: oversize input remains a draft and cannot block workbook generation',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('가'.repeat(32768));await page.locator('#addBtn').click();
+ assert.equal(await page.locator('#tb tr').count(),0);assert.equal((await page.locator('#textIn').inputValue()).length,32768);
+ assert.match(await page.locator('#inputWarn').textContent(),/32,767/);
+ await page.locator('#textIn').fill('수정한 내용');await page.locator('#addBtn').click();
+ const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
+ assert.equal(await page.locator('#exportWarn').isVisible(),false);
+});

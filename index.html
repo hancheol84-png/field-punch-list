@@ -187,6 +187,7 @@
         <button class="btn sm" id="clearBtn">비우기</button>
       </div>
     </div>
+    <p id="exportWarn" class="bad" role="alert" hidden></p>
     <div class="tbl" style="margin-top:10px">
       <table id="tbl">
         <thead><tr><th>점검일</th><th>동</th><th>코어</th><th>호수</th><th>위치</th><th>공종</th><th>내용</th><th>파일 받기</th><th></th></tr></thead>
@@ -660,6 +661,11 @@
   function addRow(text){
     if(!canEdit())return false;
     if(!text || !text.trim()) return false;
+    if(text.trim().length>32767){
+      if($("textIn").value.trim()!==text.trim())$("textIn").value+=($("textIn").value ? "\n" : "")+text;
+      $("inputWarn").textContent="엑셀에 넣을 수 있도록 한 항목을 32,767자 이하로 줄여 주세요. 내용은 입력칸에 보관했습니다.";
+      $("inputWarn").hidden=false;save();return false;
+    }
     if(!cur.unit){
       var el = $("textIn");
       if(el.value.trim() !== text.trim()) el.value += (el.value ? "\n" : "") + text;
@@ -839,7 +845,10 @@
   $("downloadBtn").onclick = function(){
     try{
       maintainRetention();
+      $("exportWarn").hidden=true;
       var snapshot = rows.slice();
+      var tooLong=snapshot.find(function(r){return [r.dong,r.unit,r.core,r.spot,r.trade,r.text].some(function(v){return String(v||"").length>32767;});});
+      if(tooLong)throw new Error(tooLong.dong+"동 "+tooLong.unit+"호 항목이 32,767자를 초과합니다. 목록에서 수정한 뒤 다시 받아 주세요.");
       var bytes = PunchExport.xlsx(snapshot,S.site,S.inspector);
       var url = URL.createObjectURL(new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
       var a = document.createElement("a"); a.href=url; a.download=PunchExport.filename(S.site);
@@ -848,7 +857,7 @@
       snapshot.forEach(function(r){r.downloadRequestedAt=requestedAt;}); save(); paintRows();
       setTimeout(function(){URL.revokeObjectURL(url);},60000);
       flash("엑셀 파일 받기를 요청했습니다. 파일 앱 또는 다운로드 폴더에서 확인하세요.");
-    }catch(e){ flash("엑셀을 만들지 못했습니다: "+(e.message||e)); }
+    }catch(e){ $("exportWarn").textContent="엑셀을 만들지 못했습니다: "+(e.message||e);$("exportWarn").hidden=false;flash($("exportWarn").textContent); }
   };
 
   /* ---------- 붙이기 ---------- */

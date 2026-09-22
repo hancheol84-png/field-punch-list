@@ -277,3 +277,25 @@ test('R12: site rename requires explicit acknowledgement while records exist',as
  page.once('dialog',d=>d.accept());await page.locator('#saveSet').click();
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).site),'가상 현장');
 });
+
+
+test('R13: draft stays with its original unit unless explicitly moved',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('기존 세대 초안');
+ await selectUnit(page,'1403');assert.equal(await page.locator('#contextDialog').isVisible(),true);
+ await page.locator('#draftStay').click();assert.match(await page.locator('#ctxBig').textContent(),/1503/);
+ await selectUnit(page,'1403');await page.locator('#draftSaveMove').click();
+ const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));
+ assert.equal(saved.rows[0].unit,'1503');assert.equal(saved.current.unit,'1403');assert.equal(saved.draft,'');
+ await page.locator('#textIn').fill('명시적 이동');await selectUnit(page,'1303');await page.locator('#draftCarry').click();await page.locator('#addBtn').click();
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[1].unit),'1303');
+ await page.locator('#dongs').getByRole('button',{name:'102',exact:true}).click();
+ assert.match(await page.locator('#ctxBig').textContent(),/호수를 정하세요/);
+});
+test('R13: late speech from previous unit is ignored after unit transition',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#micBtn').click();
+ await selectUnit(page,'1403');
+ await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'이전 세대 결과'}],{isFinal:true})]}));
+ assert.equal(await page.locator('#tb tr').count(),0);
+ await page.evaluate(()=>recognizers[1].onresult({resultIndex:0,results:[Object.assign([{transcript:'벽면 보수'}],{isFinal:true})]}));
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].unit),'1403');
+});

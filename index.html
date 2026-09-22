@@ -98,6 +98,9 @@
   .action-slot{min-height:64px}
   textarea{scroll-margin-bottom:100px}
   [hidden]{display:none!important}
+  dialog{width:min(92vw,480px);max-height:85dvh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--card);color:var(--ink)}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+  dialog h2{font-size:20px;margin:0 0 12px}dialog .row{margin-top:16px}dialog label{margin-top:12px}
 </style>
 </head>
 <body>
@@ -233,6 +236,10 @@
   </div>
 </div>
 
+<dialog id="contextDialog" aria-labelledby="contextTitle">
+  <h2 id="contextTitle">작성 중인 내용이 있습니다</h2><p id="contextMessage"></p>
+  <div class="row"><button id="draftSaveMove" class="btn pri">현재 세대에 등록하고 이동</button><button id="draftCarry" class="btn">새 세대로 내용 옮기기</button><button id="draftStay" class="btn">여기서 계속 작성</button></div>
+</dialog>
 <script src="./export.js"></script>
 <script>
 (async function(){
@@ -506,8 +513,8 @@
     return v;
   }
   function paintDongs(){
-    chips($("dongs"), S.dongs, cur.dong, function(v){ cur.dong=v; save(); paintCtx(); paintDongs(); }, "＋", function(){
-      var v=newChoice(S.dongs,"동 번호");if(v){S.dongs.push(v);cur.dong=v;save();paintDongs();paintCtx();}
+    chips($("dongs"), S.dongs, cur.dong, function(v){if(v!==cur.dong)requestContext({dong:v,unit:""});}, "＋", function(){
+      var v=newChoice(S.dongs,"동 번호");if(v){S.dongs.push(v);save();requestContext({dong:v,unit:""});paintDongs();}
     });
   }
   function paintSpots(){
@@ -612,14 +619,43 @@
   }
 
   /* ---------- 입력 ---------- */
+  var pendingContext=null;
+  function contextLabel(value){return value.dong+"동 "+(value.unit ? value.unit+"호" : "호수 미지정");}
+  function applyContext(next){
+    Object.assign(cur,next);$("unitIn").value="";
+    save();paintCtx();paintNext();paintDongs();$("inputWarn").hidden=true;say(contextLabel(cur));
+    if(listening)openRecognition();
+  }
+  function requestContext(next){
+    if(!canEdit())return;
+    next=Object.assign({},cur,next);
+    if(next.dong===cur.dong && next.unit===cur.unit){$("unitIn").value="";return;}
+    clearTimeout(retryTimer);retryTimer=null;closeRecognition();
+    if(cur.unit && $("textIn").value.trim()){
+      pendingContext=next;micStatus("멈춤","작성 중인 내용의 세대를 확인하세요.");
+      $("contextMessage").textContent=contextLabel(cur)+"에서 작성한 내용입니다. "+contextLabel(next)+"로 이동하기 전에 처리 방법을 선택하세요.";
+      $("contextDialog").showModal();return;
+    }
+    applyContext(next);
+  }
+  function finishContext(action){
+    if(!pendingContext || !canEdit())return;
+    var next=pendingContext;
+    if(action==="save"){
+      if(!addRow($("textIn").value))return;
+      $("textIn").value="";save();
+    }
+    pendingContext=null;$("contextDialog").close();
+    if(action==="stay"){$("unitIn").value="";if(listening)openRecognition();return;}
+    applyContext(next);
+  }
+  $("draftSaveMove").onclick=function(){finishContext("save");};
+  $("draftCarry").onclick=function(){finishContext("carry");};
+  $("draftStay").onclick=function(){finishContext("stay");};
+  $("contextDialog").addEventListener("cancel",function(e){e.preventDefault();finishContext("stay");});
   function setUnit(v){
-    var n = String(v||"").replace(/\D/g,"");
-    if(!n){ return; }
-    cur.unit = n;
-    $("unitIn").value = "";
-    save(); paintCtx(); paintNext();
-    $("inputWarn").hidden = true;
-    say(cur.dong+"동 "+n+"호");
+    var n=String(v||"").replace(/\D/g,"");if(!n)return;
+    requestContext({unit:n});
   }
   function addRow(text){
     if(!canEdit())return false;
@@ -880,6 +916,10 @@
     var error=settingsError(next);
     if(error){$("setupWarn").textContent=error;$("setupWarn").hidden=false;return;}
     if(rows.length && next.site!==S.site && !confirm("기존 "+rows.length+"건도 새 현장명으로 출력됩니다. 같은 현장의 이름을 수정하는 경우에만 확인하세요. 다른 현장이라면 취소 후 엑셀로 받고 목록을 비워 주세요."))return;
+    if(next.dongs.indexOf(cur.dong)<0 && $("textIn").value.trim()){
+      $("setupWarn").textContent="작성 중인 내용을 등록하거나 비운 뒤 현재 동을 목록에서 제외해 주세요.";$("setupWarn").hidden=false;return;
+    }
+    if(next.dongs.indexOf(cur.dong)<0)stopMic();
     Object.assign(S,next);
     if(S.dongs.indexOf(cur.dong)<0){cur.dong=S.dongs[0];cur.unit="";}
     if(S.spots.indexOf(cur.spot)<0)cur.spot="";
@@ -891,6 +931,8 @@
     if(!confirm("세팅을 처음 값으로 되돌릴까요? (쌓인 목록은 그대로)")) return;
     if(!canEdit())return;
     if(rows.length && S.site!==DEF.site){$("setupWarn").textContent="기록이 남아 있어 현장명을 초기화하지 않았습니다. 필요한 엑셀을 받고 목록을 비운 뒤 다시 시도하세요.";$("setupWarn").hidden=false;return;}
+    if($("textIn").value.trim()){$("setupWarn").textContent="작성 중인 내용을 등록하거나 비운 뒤 세팅을 초기화해 주세요.";$("setupWarn").hidden=false;return;}
+    stopMic();
     var keep = rows;
     S = JSON.parse(JSON.stringify(DEF)); rows = keep; cur={dong:S.dongs[0],unit:"",spot:"",trade:""}; save(); paintAll();
   };

@@ -167,16 +167,17 @@ test('R7: speech cannot change unit; stale results ignored and hidden view relea
  await selectUnit(page,'1503');await page.locator('#micBtn').click();
  await page.evaluate(()=>{recognizers[0].onstart();recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'102동 1601호'}],{isFinal:true})]});});
  assert.match(await page.locator('#ctxBig').textContent(),/101동 1503/);
- assert.equal(await page.locator('#tb .record-row').count(),0);
- await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'거실 타일 벽면 보수 필요'}],{isFinal:true})]}));
  assert.equal(await page.locator('#tb .record-row').count(),1);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].text),'102동 1601호');
+ await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'거실 타일 벽면 보수 필요'}],{isFinal:true})]}));
+ assert.equal(await page.locator('#tb .record-row').count(),2);
  await page.evaluate(async()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));wakeResolvers.shift()();await Promise.resolve();});
  assert.equal(await page.evaluate(()=>released),1);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
  assert.equal(await page.evaluate(()=>recognizers.length),2);
  await page.locator('#micBtn').click();
  await page.evaluate(()=>recognizers[1].onresult({resultIndex:0,results:[Object.assign([{transcript:'추가되면 안 되는 항목'}],{isFinal:true})]}));
- assert.equal(await page.locator('#tb .record-row').count(),1);
+ assert.equal(await page.locator('#tb .record-row').count(),2);
 });
 
 test('R8: installed shell reloads offline and exports without any remote resources',async t=>{
@@ -452,4 +453,27 @@ test('R20: compact sticky context leaves room for rows on mobile; desktop and de
  await page.evaluate(()=>window.scrollTo(0,document.querySelector('#listCard').getBoundingClientRect().top+scrollY-120));
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),1280);
  await page.screenshot({path:path.join(root,'.test-output/compact-desktop.png')});
+});
+
+
+async function speak(page,text){
+ await page.evaluate(text=>{const r=recognizers[recognizers.length-1];r.onresult({resultIndex:0,results:[Object.assign([{transcript:text}],{isFinal:true})]});},text);
+}
+test('R21: speech preserves complete sentences and never guesses fields or executes commands',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);
+ await page.locator('#spots').getByRole('button',{name:'거실',exact:true}).click();await page.locator('#trades').getByRole('button',{name:'타일',exact:true}).click();
+ await page.locator('#micBtn').click();
+ const samples=['균열 없음','양호 확인','발코니 확인','욕실 확인','침실1 도장  우측 벽\n균열 없음.','8미리미터 단차','십오 밀리 부족','단자 보수, 서고 확인','102동 1601호와 비교','삭제','취소','겸출 보수'];
+ for(const sentence of samples)await speak(page,sentence);
+ const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));
+ assert.deepEqual(state.rows.map(r=>r.text),samples);
+ assert.ok(state.rows.every(r=>r.dong==='101'&&r.unit==='1503'&&r.spot==='거실'&&r.trade==='타일'));
+ assert.equal(state.current.spot,'거실');assert.equal(state.current.trade,'타일');
+ await page.reload();assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows.map(r=>r.text)),samples);
+});
+test('R21: keyboard input and draft saved during unit move preserve wording',async t=>{
+ const page=await pageFor(t);await selectUnit(page);
+ const raw='단자 보수  8밀리미터\n서고 이상 없음';await page.locator('#textIn').fill(raw);await page.locator('#addBtn').click();
+ await page.locator('#textIn').fill('모르탈 15 미리');await selectUnit(page,'1403');await page.locator('#draftSaveMove').click();
+ assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows.map(r=>r.text)),[raw,'모르탈 15 미리']);
 });

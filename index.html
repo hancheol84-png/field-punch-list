@@ -342,29 +342,6 @@
     trades: ["골조할석","골조미장","골조견출","석고","경량석고","합지","CRC","방수","타일","창호","도배","설비"],
     phrases: ["본틀 옆 견출 보수","가틀 옆 골조벽 단차 할/G","가틀 옆 골조벽 단차 미장","현관 문틀 주변 전체 틈새(즉시 처리)","대피공간 문틀 주변 전체 틈새(즉시 처리)","붙박이장 틈새 보수","주방가구 날개벽 틈새","계단실 AL창호 개구부 하부 미장","대피창 주위 핀홀 보수"]
   };
-  var MISHEARD = {
-    "견출":["겸출","경출","견줄"], "할석":["할썩","활석","할서"], "면귀":["면기","면키","면괴"],
-    "가틀":["가톨","가들","가툴"], "본틀":["본들","본툴","본돌"], "사춤":["사춘","사총","싸춤"],
-    "핀홀":["핀홈","핀혹","핑홀"], "단차":["단자","단창","당차"], "턱짐":["덕짐","턱징","턱집"],
-    "틈새":["듬새","틈세","틈쌔"], "붙박이장":["부박이장","불박이장"], "날개벽":["날게벽","날개백"],
-    "골조벽":["곧조벽","골초벽"], "개구부":["게구부","계구부"], "드레스룸":["드래스룸","드레쓰룸"],
-    "그라인딩":["그라인더","글라인딩","그라인등"], "할석미장":["할미","할 미"], "석고":["서고","석꼬"],
-    "몰탈":["모르탈","몰딸"], "결로":["겨로","결노"], "곰보":["곱보","곰부"], "젠다이":["전다이","잰다이"],
-    "즉시처리":["직시처리"], "수평불량":["수편불량"], "개폐불량":["개패불량"]
-  };
-  // 버튼에 없어도 공종·위치로 알아듣는 말 (부른 그대로 쓰고, 버튼에도 더해 둔다)
-  var TRADE_VOCAB = ["골조","골조할석","골조미장","골조견출","할석","할석미장","미장","견출","그라인딩",
-    "사춤","방통","면정리","면귀","석고","경량석고","경량","CRC","합지","실크","도배","몰딩","단열",
-    "내장","조적","ALC","방수","타일","석재","창호","AL창호","목창호","도장","코킹","실리콘","가구",
-    "마루","설비","전기","소방","잡공사","청소","줄눈","퍼티","빠데","견출보수","방화문","금속"];
-  var SPOT_VOCAB = ["현관","전실","거실","주방","식당","복도","안방","부부침실","침실1","침실2","침실3",
-    "침실4","드레스룸","팬트리룸","팬트리","부부욕실","공용욕실","욕실1","욕실2","화장실","발코니1",
-    "발코니2","발코니3","실외기실","대피공간","세탁실","다용도실","보일러실","창고","계단실","계단실창",
-    "E.V홀","복도창","옥상","지하주차장","기계실","전기실"];
-
-  var HANGUL_NUM = {"영":0,"공":0,"하나":1,"한":1,"일":1,"둘":2,"두":2,"이":2,"셋":3,"세":3,"삼":3,
-    "넷":4,"네":4,"사":4,"다섯":5,"오":5,"여섯":6,"육":6,"일곱":7,"칠":7,"여덟":8,"팔":8,"아홉":9,"구":9,"열":10,"십":10};
-
   var S = load();
   var rows = S.rows || [];
   var cur = S.current || {dong: S.dongs[0], unit:"", spot:"", trade:""};
@@ -423,96 +400,6 @@
       $("storageWarn").hidden = false;$("saveState").textContent="저장 실패 · 현재 화면을 닫기 전에 엑셀로 받아 주세요.";
       return false;
     }
-  }
-
-  /* ---------- 한글 자모 비교 : "침살3" 을 "침실3" 으로 붙이기 ---------- */
-  var CHO="ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ", JUNG="ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ",
-      JONG="\u0000ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
-  function jamo(s){
-    var out = "";
-    for(var i=0;i<s.length;i++){
-      var c = s.charCodeAt(i);
-      if(c>=0xAC00 && c<=0xD7A3){
-        var n = c-0xAC00;
-        out += CHO[Math.floor(n/588)] + JUNG[Math.floor((n%588)/28)] + (n%28 ? JONG[n%28] : "");
-      } else out += s[i];
-    }
-    return out;
-  }
-  function dist(a,b){
-    var m=a.length, n=b.length, prev=[], curr=[], i, j;
-    for(j=0;j<=n;j++) prev[j]=j;
-    for(i=1;i<=m;i++){
-      curr[0]=i;
-      for(j=1;j<=n;j++){
-        var c = a[i-1]===b[j-1] ? 0 : 1;
-        curr[j] = Math.min(prev[j]+1, curr[j-1]+1, prev[j-1]+c);
-      }
-      prev = curr.slice();
-    }
-    return prev[n];
-  }
-  // 목록·어휘집에 그대로 있는 말인지
-  function has(list, w){
-    for(var i=0;i<list.length;i++) if(list[i].replace(/\s+/g,"")===w) return list[i];
-    return null;
-  }
-  // 소리가 비슷한 말 찾기 — "침살3" 을 "침실3" 으로
-  function near(w, list){
-    var jw = jamo(w), best=null, bd=99;
-    for(var k=0;k<list.length;k++){
-      var d = dist(jw, jamo(list[k].replace(/\s+/g,"")));
-      if(d<bd){ bd=d; best=list[k]; }
-    }
-    var limit = jw.length<=4 ? 1 : (jw.length<=8 ? 2 : 3);
-    return (best && bd<=limit) ? best : null;
-  }
-  // 아는 말을 품고 있는 새 말인지 — "본미장"·"골조미장" 안의 "미장"
-  function holds(w, lists){
-    for(var i=0;i<lists.length;i++){
-      var list = lists[i];
-      for(var k=0;k<list.length;k++){
-        var kk = list[k].replace(/\s+/g,"");
-        if(kk.length>=2 && w.length>kk.length && w.length<=8 &&
-           (w.indexOf(kk)===0 || w.lastIndexOf(kk)===w.length-kk.length)) return true;
-      }
-    }
-    return false;
-  }
-  // 말한 그대로 넣는 것이 원칙. 잘못 들은 것만 아는 말로 고친다.
-  function pick(word, list, vocab, onAdd, solo){
-    var w = word.replace(/\s+/g,"");
-    if(!w) return null;
-    var exact = has(list, w) || has(vocab, w);
-    if(exact) return add(list, exact, onAdd, false);
-    var fixed = near(w, list) || near(w, vocab);
-    if(fixed) return add(list, fixed, onAdd, true);
-    if(solo && holds(w, [list, vocab])) return add(list, w, onAdd, false);
-    return null;
-  }
-  function add(list, value, onAdd, fixed){
-    var isNew = !has(list, value.replace(/\s+/g,""));
-    if(isNew){ list.push(value); save(); if(onAdd) onAdd(); }
-    return {hit:value, fixed:fixed, added:isNew};
-  }
-
-  function fixWords(text){
-    var out = text, changed = 0;
-    for(var right in MISHEARD){
-      MISHEARD[right].forEach(function(wrong){
-        if(out.indexOf(wrong)>=0){ out = out.split(wrong).join(right); changed++; }
-      });
-    }
-    // 치수 : "팔 미리" · "8밀리" → 8mm
-    out = out.replace(/([0-9]+)\s*(미리|밀리|미리미터|mm)/g, "$1mm");
-    out = out.replace(/([가-힣]+)\s*(미리|밀리)/g, function(all, word){
-      return (HANGUL_NUM[word]!=null) ? HANGUL_NUM[word]+"mm" : all;
-    });
-    return {text: out, changed: changed};
-  }
-  function toNumber(word){
-    if(/^\d+$/.test(word)) return parseInt(word,10);
-    return HANGUL_NUM[word]!=null ? HANGUL_NUM[word] : null;
   }
 
   /* ---------- 코어 배정 ---------- */
@@ -899,48 +786,9 @@
   /* ---------- 말 해석 ---------- */
   function handle(said){
     stat.heard++;
-    var raw = said.trim();
-    if(!raw) return;
-    var fixed = fixWords(raw);
-    if(fixed.changed) stat.fixed += fixed.changed;
-    var t = fixed.text.trim();
-    var shown = (t!==raw) ? esc(raw)+' <span class="fix">→ '+esc(t)+'</span>' : esc(t);
-
-    // 취소
-    if(/^(취소|방금 ?취소|지워|삭제)$/.test(t.replace(/\s+/g,""))){
-      var gone = rows[rows.length-1];if(gone)deleteRecords([gone]);
-      $("heard").innerHTML = gone ? ("취소: "+esc(gone.text)) : "취소할 것이 없습니다";
-      paintStat(); return;
-    }
-    // 동·호수는 음성으로 바꾸지 않는다. 잘못 인식하면 세대 전체가 어긋난다.
-    if(/\d+\s*(동|호)/.test(t) || /^\d{3,4}$/.test(t)){
-      flash("동·호수는 버튼이나 숫자판으로 지정해 주세요. 현재 세대는 바꾸지 않았습니다.");
-      paintStat(); return;
-    }
-    // 앞에서부터 낱말을 떼어 위치·공종을 잡고, 남은 말을 내용으로 본다
-    var tokens = t.split(/\s+/).filter(Boolean);
-    var solo = tokens.length === 1;
-    var tags = [], used = 0;
-    for(var i=0;i<tokens.length && i<2;i++){
-      var w = tokens[i];
-      var sp = pick(w, S.spots, SPOT_VOCAB, paintSpots, solo);
-      if(sp){ cur.spot = sp.hit; tags.push("위치 " + sp.hit + (sp.added ? " (새로 추가)" : "")); used++; continue; }
-      var tr = pick(w, S.trades, TRADE_VOCAB, paintTrades, solo);
-      if(tr){ cur.trade = tr.hit; tags.push("공종 " + tr.hit + (tr.added ? " (새로 추가)" : "")); used++; continue; }
-      break;
-    }
-    var rest = tokens.slice(used).join(" ");
-    if(tags.length){ save(); paintCtx(); paintSpots(); paintTrades(); }
-    if(rest){
-      if(!addRow(rest)){ paintStat(); return; }
-      $("heard").innerHTML = shown + (tags.length ? ' <span class="fix">' + esc(tags.join(" · ")) + '</span>' : "");
-    } else if(tags.length){
-      $("heard").innerHTML = shown + ' <span class="fix">' + esc(tags.join(" · ")) + '</span>';
-      buzz();
-    } else {
-      if(!addRow(t)){ paintStat(); return; }
-      $("heard").innerHTML = shown;
-    }
+    // Speech is content, never a command or a guessed location/trade.
+    // Keep internal spacing, punctuation, measurements and negation intact.
+    if(addRow(said))$("heard").textContent="등록: "+said.trim();
     paintStat();
   }
 
@@ -1072,7 +920,7 @@
   $("undoBtn").onclick = function(){var g=rows[rows.length-1];if(g)deleteRecords([g]);else flash("삭제할 항목이 없습니다.");};
   $("unitGo").onclick = function(){ setUnit($("unitIn").value); };
   $("unitIn").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); setUnit(this.value); } });
-  $("addBtn").onclick = function(){ var el = $("textIn"); var f = fixWords(el.value); stat.fixed += f.changed; if(addRow(f.text)){ el.value=""; save();if(document.activeElement!==el)document.body.classList.remove("editing"); } paintStat(); };
+  $("addBtn").onclick = function(){ var el = $("textIn"); if(addRow(el.value)){ el.value=""; save();if(document.activeElement!==el)document.body.classList.remove("editing"); } paintStat(); };
   $("textIn").addEventListener("keydown", function(e){
     if(e.key==="Enter" && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); $("addBtn").click(); }
   });

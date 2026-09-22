@@ -58,22 +58,22 @@ test('R3: missing unit preserves draft and reload; IME Enter cannot submit',asyn
   const page=await pageFor(t);
   await page.locator('#textIn').fill('벽면 보수');await page.locator('#addBtn').click();
   assert.equal(await page.locator('#textIn').inputValue(),'벽면 보수');
-  assert.equal(await page.locator('#tb tr').count(),0);
+  assert.equal(await page.locator('#tb .record-row').count(),0);
   assert.equal(await page.evaluate(()=>document.activeElement.id),'unitIn');
   await page.reload();assert.equal(await page.locator('#textIn').inputValue(),'벽면 보수');
   await selectUnit(page);
   await page.locator('#textIn').dispatchEvent('keydown',{key:'Enter',isComposing:true});
   await page.locator('#textIn').dispatchEvent('keydown',{key:'Enter',keyCode:229});
-  assert.equal(await page.locator('#tb tr').count(),0);
+  assert.equal(await page.locator('#tb .record-row').count(),0);
   await page.locator('#addBtn').click();
-  assert.equal(await page.locator('#tb tr').count(),1);
+  assert.equal(await page.locator('#tb .record-row').count(),1);
   assert.equal(await page.locator('#textIn').inputValue(),'');
-  await page.reload();assert.equal(await page.locator('#tb tr').count(),1);
+  await page.reload();assert.equal(await page.locator('#tb .record-row').count(),1);
 });
 test('R3: storage failure stays visible while rows remain exportable in memory',async t=>{
   const page=await pageFor(t,()=>{Storage.prototype.setItem=function(){throw new DOMException('full','QuotaExceededError');};});
   await selectUnit(page);await page.locator('#textIn').fill('천장 보수');await page.locator('#addBtn').click();
-  assert.equal(await page.locator('#tb tr').count(),1);
+  assert.equal(await page.locator('#tb .record-row').count(),1);
   assert.equal(await page.locator('#storageWarn').isVisible(),true);
   assert.match(await page.locator('#storageWarn').textContent(),/저장되지/);
 });
@@ -101,7 +101,7 @@ test('R4: browser downloads a real XLSX and failed clipboard shows selectable fa
     document.execCommand=()=>false;
   });
   await selectUnit(page);await page.locator('#textIn').fill(' =1+1\t확인\n벽 보수');await page.locator('#addBtn').click();
-  assert.equal(await page.locator('#tb tr').count(),1);
+  assert.equal(await page.locator('#tb .record-row').count(),1);
   const pending=page.waitForEvent('download',{timeout:8000});pending.catch(()=>{});await page.locator('#downloadBtn').click();
   assert.match(await page.locator('#heard').textContent(),/파일 받기/, 'download action feedback');
   const download=await pending;assert.match(download.suggestedFilename(),/^펀치리스트_샘플현장_\d{8}\.xlsx$/);
@@ -123,13 +123,13 @@ test('R6: seven-day boundary, 3/1 day warning, unknown dates and download marker
     {dong:'101',unit:'1503',text:'삼일',createdAt:age(4)},
     {dong:'101',unit:'1504',text:'미상'}]}));
  },{clock:'2026-09-22T03:00:00Z'});
- assert.equal(await page.locator('#tb tr').count(),3);
+ assert.equal(await page.locator('#tb .record-row').count(),3);
  const warning=await page.locator('#retentionWarn').textContent();
  assert.match(warning,/1건이 1일/);assert.match(warning,/1건이 3일/);assert.match(warning,/날짜 미상 1건/);
  const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
  assert.match(await page.locator('#tb').textContent(),/요청 2026-09-22/);
  await page.clock.fastForward(86400000);
- assert.equal(await page.locator('#tb tr').count(),2);
+ assert.equal(await page.locator('#tb .record-row').count(),2);
  assert.match(await page.locator('#tb').textContent(),/미상/);
 });
 
@@ -164,16 +164,16 @@ test('R7: speech cannot change unit; stale results ignored and hidden view relea
  await selectUnit(page,'1503');await page.locator('#micBtn').click();
  await page.evaluate(()=>{recognizers[0].onstart();recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'102동 1601호'}],{isFinal:true})]});});
  assert.match(await page.locator('#ctxBig').textContent(),/101동 1503/);
- assert.equal(await page.locator('#tb tr').count(),0);
+ assert.equal(await page.locator('#tb .record-row').count(),0);
  await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'거실 타일 벽면 보수 필요'}],{isFinal:true})]}));
- assert.equal(await page.locator('#tb tr').count(),1);
+ assert.equal(await page.locator('#tb .record-row').count(),1);
  await page.evaluate(async()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));wakeResolvers.shift()();await Promise.resolve();});
  assert.equal(await page.evaluate(()=>released),1);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
  assert.equal(await page.evaluate(()=>recognizers.length),2);
  await page.locator('#micBtn').click();
  await page.evaluate(()=>recognizers[1].onresult({resultIndex:0,results:[Object.assign([{transcript:'추가되면 안 되는 항목'}],{isFinal:true})]}));
- assert.equal(await page.locator('#tb tr').count(),1);
+ assert.equal(await page.locator('#tb .record-row').count(),1);
 });
 
 test('R8: installed shell reloads offline and exports without any remote resources',async t=>{
@@ -185,7 +185,7 @@ test('R8: installed shell reloads offline and exports without any remote resourc
  await page.context().setOffline(true);await page.reload();
  assert.match(await page.locator('h1').textContent(),/현장 펀치리스트/);
  await selectUnit(page);await page.locator('#textIn').fill('오프라인 보수');await page.locator('#addBtn').click();
- assert.equal(await page.locator('#tb tr').count(),1);
+ assert.equal(await page.locator('#tb .record-row').count(),1);
  const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
  assert.ok(requests.every(url=>url.startsWith(origin+'/')||url.startsWith('blob:')));
  assert.ok((await page.evaluate(()=>caches.keys())).includes('unrelated-project-sentinel'));
@@ -201,7 +201,7 @@ test('R9: unsupported or corrupt storage never overwrites original; old origin k
  await selectUnit(page);await page.locator('#textIn').fill('복구 전 새 입력');await page.locator('#addBtn').click();
  assert.equal(await page.evaluate(()=>localStorage.getItem('punchlist.v2')),'{"version":99,"rows":[]}');
  assert.equal(await page.evaluate(()=>localStorage.getItem('punchTest.v1')),'old unrelated data');
- assert.equal(await page.locator('#tb tr').count(),1);
+ assert.equal(await page.locator('#tb .record-row').count(),1);
  assert.equal(await page.locator('#storageRecovery').isVisible(),true);
  await page.evaluate(()=>localStorage.setItem('punchlist.v2','{"version":2,"rows":[null]}'));
  // init scripts run on reload; use a new context with malformed data for independent validation.
@@ -243,9 +243,9 @@ test('R11: second tab cannot overwrite records and can take over after editor cl
  await b.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
  assert.equal(await b.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows.length),1);
  await a.close();await b.locator('#reloadGuard').click();await b.waitForFunction(()=>document.documentElement.dataset.ready==='true');
- assert.equal(await b.locator('#unitGo').isDisabled(),false);assert.equal(await b.locator('#tb tr').count(),1);
+ assert.equal(await b.locator('#unitGo').isDisabled(),false);assert.equal(await b.locator('#tb .record-row').count(),1);
  await b.locator('#textIn').fill('이어 쓴 기록');await b.locator('#addBtn').click();
- assert.equal(await b.locator('#tb tr').count(),2);
+ assert.equal(await b.locator('#tb .record-row').count(),2);
 });
 test('R11: external storage change blocks stale save but preserves local export',async t=>{
  const page=await pageFor(t);await selectUnit(page);
@@ -295,7 +295,7 @@ test('R13: late speech from previous unit is ignored after unit transition',asyn
  const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#micBtn').click();
  await selectUnit(page,'1403');
  await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'이전 세대 결과'}],{isFinal:true})]}));
- assert.equal(await page.locator('#tb tr').count(),0);
+ assert.equal(await page.locator('#tb .record-row').count(),0);
  await page.evaluate(()=>recognizers[1].onresult({resultIndex:0,results:[Object.assign([{transcript:'벽면 보수'}],{isFinal:true})]}));
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].unit),'1403');
 });
@@ -303,7 +303,7 @@ test('R13: late speech from previous unit is ignored after unit transition',asyn
 
 test('R14: oversize input remains a draft and cannot block workbook generation',async t=>{
  const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('가'.repeat(32768));await page.locator('#addBtn').click();
- assert.equal(await page.locator('#tb tr').count(),0);assert.equal((await page.locator('#textIn').inputValue()).length,32768);
+ assert.equal(await page.locator('#tb .record-row').count(),0);assert.equal((await page.locator('#textIn').inputValue()).length,32768);
  assert.match(await page.locator('#inputWarn').textContent(),/32,767/);
  await page.locator('#textIn').fill('수정한 내용');await page.locator('#addBtn').click();
  const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
@@ -316,19 +316,19 @@ test('R15: editing fixes record and core without extending retention; draft stay
  const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0].createdAt);
  const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
  await page.locator('#textIn').fill('다음 항목 초안');await page.locator('#micBtn').click();
- await page.locator('#tb button').filter({hasText:'수정'}).first().click();
+ await page.locator('#tb .record-row').first().click();await page.locator('#detailEdit').click();
  await page.locator('#editUnit').fill('1401');await page.locator('#editText').fill('수정한 내용');await page.locator('#editSave').click();
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));
  assert.equal(saved.rows[0].createdAt,before);assert.equal(saved.rows[0].core,'1코어');assert.equal(saved.rows[0].unit,'1401');assert.equal(saved.rows[0].text,'수정한 내용');
  assert.equal(saved.rows[0].downloadRequestedAt,undefined);assert.equal(saved.draft,'다음 항목 초안');
  await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'오래된 결과'}],{isFinal:true})]}));
- assert.equal(await page.locator('#tb tr').count(),1);assert.equal(await page.evaluate(()=>recognizers.length),2);
+ assert.equal(await page.locator('#tb .record-row').count(),1);assert.equal(await page.evaluate(()=>recognizers.length),2);
  await page.reload();assert.match(await page.locator('#tb').textContent(),/수정한 내용/);
 });
 test('R15: edit cannot revive a record expiring while the dialog is open',async t=>{
  const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'만료 직전',createdAt:new Date(Date.parse('2026-09-22T03:00:00Z')-7*86400000+10000).toISOString()}]})),{clock:'2026-09-22T03:00:00Z'});
- await page.locator('#tb button').filter({hasText:'수정'}).click();await page.clock.fastForward(11000);await page.locator('#editSave').click();
- assert.match(await page.locator('#editWarn').textContent(),/보관 기간/);assert.equal(await page.locator('#tb tr').count(),0);
+ await page.locator('#tb .record-row').click();await page.locator('#detailEdit').click();await page.clock.fastForward(11000);await page.locator('#editSave').click();
+ assert.match(await page.locator('#editWarn').textContent(),/보관 기간/);assert.equal(await page.locator('#tb .record-row').count(),0);
 });
 
 
@@ -336,42 +336,39 @@ test('R16: single and all deletion can be restored without changing insertion or
  const page=await pageFor(t);await selectUnit(page,'1401');await page.locator('#textIn').fill('먼저 입력');await page.locator('#addBtn').click();
  await selectUnit(page,'1501');await page.locator('#textIn').fill('나중 입력');await page.locator('#addBtn').click();
  const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows);
- await page.locator('#tb tr').first().getByRole('button',{name:/항목 삭제/}).click();await page.locator('#restoreBtn').click();
+ await page.locator('#tb .record-row').first().click();await page.locator('#detailDelete').click();await page.locator('#restoreBtn').click();
  assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows),before);
  await page.locator('#undoBtn').click();assert.match(await page.locator('#tb').textContent(),/먼저 입력/);assert.doesNotMatch(await page.locator('#tb').textContent(),/나중 입력/);
  await page.locator('#restoreBtn').click();
- page.once('dialog',d=>d.accept());await page.locator('#clearBtn').click();assert.equal(await page.locator('#tb tr').count(),0);
+ page.once('dialog',d=>d.accept());await page.locator('#clearBtn').click();assert.equal(await page.locator('#tb .record-row').count(),0);
  await page.locator('#restoreBtn').click();assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows),before);
 });
 test('R16: deletion recovery cannot extend expiry and ends after ten seconds',async t=>{
  const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'만료 직전',createdAt:'2026-09-15T03:00:03Z'}]})),{clock:'2026-09-22T03:00:00Z'});
  await page.locator('#undoBtn').click();await page.clock.fastForward(4000);await page.locator('#restoreBtn').click();
- assert.equal(await page.locator('#tb tr').count(),0);assert.match(await page.locator('#heard').textContent(),/보관 기간/);
+ assert.equal(await page.locator('#tb .record-row').count(),0);assert.match(await page.locator('#heard').textContent(),/보관 기간/);
  await selectUnit(page);await page.locator('#textIn').fill('새 기록');await page.locator('#addBtn').click();await page.locator('#undoBtn').click();
  await page.clock.fastForward(11000);assert.equal(await page.locator('#restoreNotice').isVisible(),false);
 });
 
 
-test('R17: mobile cards expose full-width content and edit actions; recent item opens editor',async t=>{
- const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('벽면 줄눈 보수 필요. 입력한 내용이 한 글자씩 꺾이지 않고 읽혀야 합니다.');await page.locator('#addBtn').click();
+test('R18: compact rows open full details and allow edit while preserving draft',async t=>{
+ const page=await pageFor(t);await selectUnit(page);
+ const content='긴 내용 확인 '.repeat(35);await page.locator('#textIn').fill(content);await page.locator('#addBtn').click();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);
- const content=await page.locator('#tb td[data-label="내용"]').boundingBox();assert.ok(content.width>280);
- const action=await page.locator('#tb .row-actions').boundingBox();assert.ok(action.x>=0 && action.x+action.width<=390);
- assert.match(await page.locator('#saveState').textContent(),/저장됨/);
- await page.locator('#listCard').screenshot({path:path.join(root,'.test-output/improved-mobile-list.png')});
- await page.locator('#recentEntry').screenshot({path:path.join(root,'.test-output/improved-recent.png')});
+ assert.ok((await page.locator('#tb .record-text').boundingBox()).height<=46);
+ await page.locator('#tb .record-row').click();assert.equal(await page.locator('#detailText').textContent(),content.trim());
+ assert.match(await page.locator('#detailMeta').textContent(),/점검일.*코어/s);
+ await page.locator('#detailEdit').click();await page.locator('#editText').fill('수정 내용');await page.locator('#editSave').click();
+ assert.match(await page.locator('#tb').textContent(),/수정 내용/);
  await page.locator('#recentEdit').click();assert.equal(await page.locator('#editDialog').isVisible(),true);
- await page.locator('#editDialog').screenshot({path:path.join(root,'.test-output/improved-mobile-edit.png')});await page.locator('#editCancel').click();
- await page.emulateMedia({colorScheme:'dark'});await page.locator('#listCard').screenshot({path:path.join(root,'.test-output/improved-mobile-dark.png')});
- await page.setViewportSize({width:1280,height:900});assert.equal(await page.locator('#tbl').evaluate(e=>getComputedStyle(e).display),'table');
- await page.locator('#listCard').screenshot({path:path.join(root,'.test-output/improved-desktop-list.png')});
+ await page.locator('#editCancel').click();
 });
-
 
 test('R14: legacy oversized metadata is repairable and cannot create new unexportable rows',async t=>{
  const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[],current:{dong:'101',unit:'1503',spot:'가'.repeat(32768),trade:''}})));
  await page.locator('#textIn').fill('남겨 둘 내용');await page.locator('#addBtn').click();
- assert.equal(await page.locator('#tb tr').count(),0);assert.equal(await page.locator('#textIn').inputValue(),'남겨 둘 내용');
+ assert.equal(await page.locator('#tb .record-row').count(),0);assert.equal(await page.locator('#textIn').inputValue(),'남겨 둘 내용');
  await page.locator('#spots').getByRole('button',{name:'거실',exact:true}).click();await page.locator('#addBtn').click();
- assert.equal(await page.locator('#tb tr').count(),1);
+ assert.equal(await page.locator('#tb .record-row').count(),1);
 });

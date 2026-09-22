@@ -102,24 +102,25 @@
   dialog{width:min(92vw,480px);max-height:85dvh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--card);color:var(--ink)}
   dialog::backdrop{background:rgba(0,0,0,.45)}
   dialog h2{font-size:20px;margin:0 0 12px}dialog .row{margin-top:16px}dialog label{margin-top:12px}
-  @media(min-width:900px){.wrap{max-width:1040px}#tbl{font-size:14px}#tbl th{white-space:nowrap}#tbl th:nth-child(7){width:34%}#tbl th:last-child{min-width:125px}}
-  .row-actions{display:flex;gap:6px;flex-wrap:wrap}
+  @media(min-width:900px){.wrap{max-width:1040px}}
   .recent{margin-top:12px;padding:12px;background:var(--soft);border-radius:8px}
   .recent p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
-  #recentText{max-height:140px;overflow:auto}
+  #recentText{max-height:100px;overflow:auto}
   button:disabled{opacity:.55;cursor:not-allowed}
   dialog .row{position:sticky;bottom:-20px;background:var(--card);padding:12px 0;margin-bottom:0}
+  .record-row{display:grid;grid-template-columns:minmax(0,190px) minmax(0,140px) minmax(0,1fr) 20px;gap:12px;align-items:center;width:100%;min-height:68px;padding:12px 4px;border:0;border-bottom:1px solid var(--line);background:var(--card);color:var(--ink);text-align:left}
+  .record-row:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
+  .record-meta{font-size:12px;color:var(--ink2);white-space:pre-line;overflow-wrap:anywhere}
+  .record-tags{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .record-text{font-size:15px;line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .record-arrow{font-size:22px;color:var(--ink3)}
+  .detail-meta{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;margin:12px 0}
+  .detail-meta dt{color:var(--ink2)}.detail-meta dd{margin:0;overflow-wrap:anywhere}
+  #detailText{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.6}
   @media(max-width:899px){
-    .tbl{border:0;overflow:visible}#tbl{display:block}#tbl thead{display:none}
-    #tb{display:grid;gap:12px}#tb tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
-    #tb td{display:block;border:0;padding:0;white-space:normal;min-width:0;overflow-wrap:anywhere;font-family:var(--sans);font-size:15px}
-    #tb td[data-label]::before{content:attr(data-label);display:block;font-size:12px;font-weight:400;color:var(--ink2)}
-    #tb td[data-label="동"]{order:0;font-weight:700}#tb td[data-label="호수"]{order:1;font-weight:700}
-    #tb td[data-label="위치"]{order:2}#tb td[data-label="공종"]{order:3}
-    #tb td[data-label="내용"]{order:4;grid-column:1/-1;white-space:pre-wrap;font-size:16px;line-height:1.6}
-    #tb td[data-label="점검일"]{order:5;font-size:13px}#tb td[data-label="코어"]{order:6;font-size:13px}
-    #tb td[data-label="파일 받기"]{order:7;grid-column:1/-1;font-size:13px}
-    #tb td.row-actions{order:8;grid-column:1/-1;display:flex;justify-content:flex-end;border-top:1px solid var(--line);padding-top:8px}
+    .record-row{grid-template-columns:minmax(0,1fr) 20px;gap:3px 10px;padding:11px 0}
+    .record-meta{grid-column:1;font-size:11px;white-space:normal}
+    .record-tags{grid-column:1}.record-text{grid-column:1}.record-arrow{grid-column:2;grid-row:1/4}
   }
 </style>
 </head>
@@ -214,12 +215,7 @@
       </div>
     </div>
     <p id="exportWarn" class="bad" role="alert" hidden></p>
-    <div class="tbl" style="margin-top:10px">
-      <table id="tbl">
-        <thead><tr><th>점검일</th><th>동</th><th>코어</th><th>호수</th><th>위치</th><th>공종</th><th>내용</th><th>파일 받기</th><th></th></tr></thead>
-        <tbody id="tb"></tbody>
-      </table>
-    </div>
+    <div id="tbl" style="margin-top:10px"><div id="tb" aria-label="작성한 기록"></div></div>
     <p class="note" style="margin-top:8px">코어 하나를 위층부터 내려오는 순서로 정렬해 보여 줍니다. “엑셀 받기”로 전체·공종별 시트를 받으세요. 복사는 엑셀 셀의 붙여넣기 메뉴를 이용하세요.</p>
   </div>
 
@@ -264,6 +260,11 @@
   </div>
 </div>
 
+<dialog id="detailDialog" aria-labelledby="detailTitle">
+  <h2 id="detailTitle">항목 상세</h2><p id="detailWarn" class="bad" role="status" hidden></p>
+  <dl id="detailMeta" class="detail-meta"></dl><p id="detailText"></p>
+  <div class="row"><button id="detailEdit" class="btn pri">수정</button><button id="detailDelete" class="btn">삭제</button><button id="detailClose" data-view="true" class="btn">닫기</button></div>
+</dialog>
 <dialog id="editDialog" aria-labelledby="editTitle">
   <h2 id="editTitle">항목 수정</h2><p class="note">수정 중에는 음성 인식을 잠시 멈춥니다. 입력일과 7일 보관 기간은 유지됩니다.</p>
   <p id="editWarn" class="bad" role="alert" hidden></p>
@@ -294,6 +295,7 @@
   function protectEditor(message){
     $("editGuard").hidden=false;$("editGuardText").textContent=message;
     document.querySelectorAll("button,input,textarea,select").forEach(function(el){
+      if(el.dataset.view==="true")return;
       if(el.tagName==="TEXTAREA"){el.readOnly=true;return;}
       if(["downloadBtn","copyBtn","copyText","rawDownloadBtn","reloadGuard","editCancel","draftStay"].indexOf(el.id)<0)el.disabled=true;
     });
@@ -341,7 +343,7 @@
   var cur = S.current || {dong: S.dongs[0], unit:"", spot:"", trade:""};
   var stat = {up:0, restarts:0, heard:0, fixed:0};
   var rec = null, listening = false, startedAt = 0, tick = null;
-  var editingRow=null, deletedAction=null, restoreTimer=null;
+  var viewingRow=null, editingRow=null, deletedAction=null, restoreTimer=null;
 
   function $(id){ return document.getElementById(id); }
   function load(){
@@ -608,25 +610,37 @@
       host.appendChild(b);
     });
   }
+  function recordButton(r){
+    var button=document.createElement("button");button.className="record-row";button.dataset.view="true";
+    button.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 · "+(r.spot||"위치 미지정")+" · "+(r.trade||"공종 미지정")+" · "+r.text+" · 상세 보기");
+    [["record-meta",r.dong+"동 "+r.unit+"호 · "+(r.core||"코어 미지정")+"\n"+rowDate(r)+" · "+(r.downloadRequestedAt ? "요청 "+PunchExport.day(r.downloadRequestedAt) : "아직 안 받음")],["record-tags",(r.spot||"위치 미지정")+" · "+(r.trade||"공종 미지정")],["record-text",r.text],["record-arrow","›"]].forEach(function(pair){var el=document.createElement("span");el.className=pair[0];el.textContent=pair[1];button.appendChild(el);});
+    button.onclick=function(){openRowDetail(r);};return button;
+  }
+  function openRowDetail(row){
+    maintainRetention();if(rows.indexOf(row)<0)return;
+    viewingRow=row;clearTimeout(retryTimer);retryTimer=null;closeRecognition();
+    if(listening)micStatus("멈춤","상세 확인이 끝나면 다시 듣습니다.");
+    $("detailTitle").textContent=row.dong+"동 "+row.unit+"호";$("detailWarn").hidden=true;
+    $("detailMeta").innerHTML="";
+    [["위치",row.spot||"미지정"],["공종",row.trade||"미지정"],["점검일",rowDate(row)],["코어",row.core||"미지정"],["파일 받기",row.downloadRequestedAt ? "요청 "+PunchExport.day(row.downloadRequestedAt)+" · 실제 파일 확인 필요" : "아직 안 받음"]].forEach(function(pair){var dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=pair[0];dd.textContent=pair[1];$("detailMeta").append(dt,dd);});
+    $("detailText").textContent=row.text;$("detailEdit").disabled=!canEdit();$("detailDelete").disabled=!canEdit();$("detailDialog").showModal();
+  }
+  function closeRowDetail(resume){viewingRow=null;$("detailDialog").close();if(resume!==false && listening)openRecognition();}
+  $("detailClose").onclick=function(){closeRowDetail();};
+  $("detailDialog").addEventListener("cancel",function(e){e.preventDefault();closeRowDetail();});
+  function detailAction(action){
+    if(!canEdit())return;
+    maintainRetention();var row=viewingRow;
+    if(rows.indexOf(row)<0){$("detailWarn").textContent="이미 삭제되었거나 7일 보관 기간이 지난 항목입니다.";$("detailWarn").hidden=false;return;}
+    closeRowDetail(false);
+    if(action==="edit")openRowEditor(row);else{deleteRecords([row]);if(listening)openRecognition();}
+  }
+  $("detailEdit").onclick=function(){detailAction("edit");};$("detailDelete").onclick=function(){detailAction("delete");};
   function paintRows(){
     var tb = $("tb");
     tb.innerHTML = "";
-    var sorted = PunchExport.sort(rows);
-    sorted.forEach(function(r){
-      var tr = document.createElement("tr");
-      tr.innerHTML = '<td class="n">'+esc(rowDate(r))+'</td><td class="n">'+esc(r.dong)+'</td><td class="n">'+esc(r.core||"")+'</td>'+
-        '<td class="n">'+esc(r.unit)+'</td><td>'+esc(r.spot||"미지정")+'</td><td>'+esc(r.trade||"미지정")+'</td>'+
-        '<td>'+esc(r.text)+'</td><td>'+esc(r.downloadRequestedAt ? '요청 '+PunchExport.day(r.downloadRequestedAt) : '아직 안 받음')+'</td>';
-      Array.from(tr.children).forEach(function(cell,i){cell.dataset.label=["점검일","동","코어","호수","위치","공종","내용","파일 받기"][i];});
-      var td = document.createElement("td");td.className="row-actions";
-      var edit=document.createElement("button");edit.className="btn sm";edit.textContent="수정";edit.disabled=!canEdit();
-      edit.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 항목 수정");edit.onclick=function(){openRowEditor(r);};td.appendChild(edit);
-      var x = document.createElement("button"); x.disabled=!canEdit();
-      x.className = "btn sm del"; x.textContent = "삭제"; x.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 항목 삭제");
-      x.onclick = function(){ deleteRecords([r]); };
-      td.appendChild(x); tr.appendChild(td);
-      tb.appendChild(tr);
-    });
+    var sorted=PunchExport.sort(rows);
+    sorted.forEach(function(r){tb.appendChild(recordButton(r));});
     $("cnt").textContent = rows.length ? rows.length+"건" : "";
     paintRetention();
     var recent=rows[rows.length-1];$("recentEntry").hidden=!recent;
@@ -870,7 +884,7 @@
     retryTimer=setTimeout(function(){retryTimer=null;if(listening&&!document.hidden){stat.restarts++;paintStat();openRecognition();}},delay);
   }
   function openRecognition(){
-    if(!listening || document.hidden || editingRow || pendingContext)return;
+    if(!listening || document.hidden || editingRow || viewingRow || pendingContext)return;
     micStatus("권한 요청","마이크 허용 또는 인식 시작을 기다립니다.");
     try{
       var instance = new SR();rec=instance;

@@ -8,6 +8,7 @@ test('public assets have no remote runtime resources or spreadsheet files', () =
   const files = execFileSync('git', ['ls-files'], {cwd:root, encoding:'utf8'}).trim().split('\n');
   assert.equal(files.filter(f => /\.(xlsx?|xlsm|xlsb|csv|tsv)$/i.test(f)).length, 0);
   const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
+  assert.equal(html.includes('\0'), false, 'HTML must stay text-searchable');
   assert.doesNotMatch(html, /(?:src|href)=["'](?:https?:)?\/\//i);
   assert.doesNotMatch(html, /(?:fetch|importScripts)\s*\(\s*["']https?:/i);
   assert.match(html, /site: "샘플현장"/);

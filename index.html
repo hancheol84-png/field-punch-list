@@ -108,6 +108,13 @@
   #recentText{max-height:100px;overflow:auto}
   button:disabled{opacity:.55;cursor:not-allowed}
   dialog .row{position:sticky;bottom:-20px;background:var(--card);padding:12px 0;margin-bottom:0}
+  .list-tools{display:grid;gap:10px;margin-top:16px}
+  .list-tools .note{margin:0}
+  .list-tools select{width:auto;min-width:0;flex:1}
+  .list-tools [aria-pressed="true"]{background:var(--navy);color:var(--navy-ink)}
+  .group-toggle{width:100%;display:flex;justify-content:space-between;gap:12px;text-align:left;margin-top:10px;overflow-wrap:anywhere}
+  .group-heading{font-size:15px;margin:16px 0 4px}
+  .list-more{width:100%;margin:10px 0}
   .record-row{display:grid;grid-template-columns:minmax(0,190px) minmax(0,140px) minmax(0,1fr) 20px;gap:12px;align-items:center;width:100%;min-height:68px;padding:12px 4px;border:0;border-bottom:1px solid var(--line);background:var(--card);color:var(--ink);text-align:left}
   .record-row:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
   .record-meta{font-size:12px;color:var(--ink2);white-space:pre-line;overflow-wrap:anywhere}
@@ -118,6 +125,7 @@
   .detail-meta dt{color:var(--ink2)}.detail-meta dd{margin:0;overflow-wrap:anywhere}
   #detailText{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.6}
   @media(max-width:899px){
+    .record-meta{display:none}
     .record-row{grid-template-columns:minmax(0,1fr) 20px;gap:3px 10px;padding:11px 0}
     .record-meta{grid-column:1;font-size:11px;white-space:normal}
     .record-tags{grid-column:1}.record-text{grid-column:1}.record-arrow{grid-column:2;grid-row:1/4}
@@ -209,14 +217,27 @@
     <div class="row" style="justify-content:space-between">
       <p class="sec-t" style="margin:0">쌓인 목록 <span id="cnt" class="note"></span></p>
       <div class="row">
-        <button class="btn pri" id="downloadBtn">엑셀 받기 (.xlsx)</button>
+        <button class="btn pri" id="downloadBtn">전체 엑셀 받기 (.xlsx)</button>
         <button class="btn sm" id="copyBtn">엑셀로 복사</button>
-        <button class="btn sm" id="clearBtn">비우기</button>
+        <button class="btn sm" id="clearBtn">전체 비우기</button>
       </div>
     </div>
     <p id="exportWarn" class="bad" role="alert" hidden></p>
-    <div id="tbl" style="margin-top:10px"><div id="tb" aria-label="작성한 기록"></div></div>
-    <p class="note" style="margin-top:8px">코어 하나를 위층부터 내려오는 순서로 정렬해 보여 줍니다. “엑셀 받기”로 전체·공종별 시트를 받으세요. 복사는 엑셀 셀의 붙여넣기 메뉴를 이용하세요.</p>
+    <div class="list-tools">
+      <div class="row" role="group" aria-label="목록 범위">
+        <button id="listCurrent" class="btn sm" data-view="true" aria-pressed="true">현재 세대</button>
+        <button id="listAll" class="btn sm" data-view="true" aria-pressed="false">전체</button>
+      </div>
+      <label class="f" for="listSearch">목록 검색</label>
+      <input id="listSearch" type="search" data-view="true" placeholder="동·호수·위치·내용 검색" autocomplete="off">
+      <div class="row">
+        <label for="listTrade">공종</label><select id="listTrade" data-view="true" aria-label="조회할 공종"><option value="">전체 공종</option></select>
+        <button id="listReset" class="btn sm" data-view="true">검색 초기화</button>
+      </div>
+      <p id="listSummary" class="note" role="status" aria-live="polite"></p>
+    </div>
+    <div id="tbl"><div id="tb" aria-label="작성한 기록"></div></div>
+    <p class="note" style="margin-top:8px">항목을 누르면 전체 내용·점검일을 보고 수정·삭제할 수 있습니다. 세대 안에서는 최근 입력부터 20건씩 표시합니다. 엑셀 받기·복사·전체 비우기는 검색 조건과 관계없이 전체 기록에 적용됩니다.</p>
   </div>
 
   <div id="copyFallback" class="card" hidden><p role="alert">자동 복사에 실패했습니다. 아래 내용을 길게 눌러 전체 선택·복사한 뒤 엑셀에 붙여넣으세요.</p><textarea id="copyText" readonly aria-label="직접 복사할 표"></textarea></div>
@@ -610,8 +631,20 @@
       host.appendChild(b);
     });
   }
+  var listScope="current", listQuery="", listTrade="", groupLimit=20;
+  var openGroup=null, rowLimits=new Map(), rowKeys=new WeakMap(), nextRowKey=0;
+  function groupKey(r){return JSON.stringify([r.dong,r.unit]);}
+  function focusKey(el,key){el.dataset.focusKey=key;return el;}
+  function resetListPages(){rowLimits.clear();groupLimit=20;}
+  function setListScope(scope){listScope=scope;resetListPages();openGroup=groupKey(cur);paintRows();}
+  $("listCurrent").onclick=function(){setListScope("current");};
+  $("listAll").onclick=function(){setListScope("all");};
+  $("listSearch").oninput=function(){listQuery=this.value.trim().toLocaleLowerCase();resetListPages();paintRows();};
+  $("listTrade").onchange=function(){listTrade=this.value;resetListPages();paintRows();};
+  $("listReset").onclick=function(){listQuery="";listTrade="";$("listSearch").value="";resetListPages();paintRows();};
   function recordButton(r){
     var button=document.createElement("button");button.className="record-row";button.dataset.view="true";
+    if(!rowKeys.has(r))rowKeys.set(r,String(++nextRowKey));focusKey(button,"row-"+rowKeys.get(r));
     button.setAttribute("aria-label",r.dong+"동 "+r.unit+"호 · "+(r.spot||"위치 미지정")+" · "+(r.trade||"공종 미지정")+" · "+r.text+" · 상세 보기");
     [["record-meta",r.dong+"동 "+r.unit+"호 · "+(r.core||"코어 미지정")+"\n"+rowDate(r)+" · "+(r.downloadRequestedAt ? "요청 "+PunchExport.day(r.downloadRequestedAt) : "아직 안 받음")],["record-tags",(r.spot||"위치 미지정")+" · "+(r.trade||"공종 미지정")],["record-text",r.text],["record-arrow","›"]].forEach(function(pair){var el=document.createElement("span");el.className=pair[0];el.textContent=pair[1];button.appendChild(el);});
     button.onclick=function(){openRowDetail(r);};return button;
@@ -637,11 +670,63 @@
   }
   $("detailEdit").onclick=function(){detailAction("edit");};$("detailDelete").onclick=function(){detailAction("delete");};
   function paintRows(){
-    var tb = $("tb");
-    tb.innerHTML = "";
-    var sorted=PunchExport.sort(rows);
-    sorted.forEach(function(r){tb.appendChild(recordButton(r));});
-    $("cnt").textContent = rows.length ? rows.length+"건" : "";
+    var tb=$("tb"), active=document.activeElement, activeKey=tb.contains(active) ? active.dataset.focusKey : null;
+    tb.replaceChildren();
+    var currentRows=rows.filter(function(r){return r.dong===cur.dong && r.unit===cur.unit;});
+    $("cnt").textContent="전체 "+rows.length+"건";
+    $("listCurrent").textContent="현재 세대 "+currentRows.length+"건";
+    $("listAll").textContent="전체 "+rows.length+"건";
+    $("listCurrent").setAttribute("aria-pressed",String(listScope==="current"));
+    $("listAll").setAttribute("aria-pressed",String(listScope==="all"));
+    var trades=Array.from(new Set(rows.map(function(r){return r.trade||"";}))).sort();
+    if(listTrade && !trades.includes(JSON.parse(listTrade)))trades.push(JSON.parse(listTrade));
+    $("listTrade").replaceChildren(new Option("전체 공종",""));
+    trades.forEach(function(v){$("listTrade").appendChild(new Option(v||"공종 미지정",JSON.stringify(v)));});
+    $("listTrade").value=listTrade;
+    var source=listScope==="current" ? currentRows : rows;
+    var terms=listQuery.split(/\s+/).filter(Boolean);
+    var matching=source.filter(function(r){
+      var text=[r.dong+"동",r.unit+"호",r.spot||"",r.trade||"",r.text].join(" ").toLocaleLowerCase();
+      return (!listTrade || (r.trade||"")===JSON.parse(listTrade)) && terms.every(function(term){return text.includes(term);});
+    });
+    $("listSummary").textContent=(listScope==="current" ? contextLabel(cur) : "전체 세대")+" · 검색 결과 "+matching.length+"건 / "+source.length+"건";
+    function renderGroup(host,key,items){
+      var limit=rowLimits.get(key)||20;
+      items.slice().reverse().slice(0,limit).forEach(function(r){host.appendChild(recordButton(r));});
+      if(items.length>limit){
+        var more=focusKey(document.createElement("button"),"more-"+key);more.className="btn list-more";more.dataset.view="true";
+        more.textContent="20건 더 보기 ("+Math.min(limit,items.length)+" / "+items.length+"건)";
+        more.onclick=function(){rowLimits.set(key,limit+20);paintRows();};host.appendChild(more);
+      }
+    }
+    if(!matching.length){
+      var empty=document.createElement("p");empty.className="note";
+      empty.textContent=!rows.length ? "아직 기록이 없습니다. 내용을 입력해 주세요." : listScope==="current" && !cur.unit ? "호수를 정하거나 전체 목록을 선택하세요." : "조건에 맞는 기록이 없습니다. 검색을 초기화하거나 전체 목록을 확인하세요.";
+      tb.appendChild(empty);
+    }else if(listScope==="current"){
+      var heading=document.createElement("h3");heading.className="group-heading";heading.textContent=contextLabel(cur)+" · "+matching.length+"건";tb.appendChild(heading);
+      renderGroup(tb,groupKey(cur),matching);
+    }else{
+      var groups=new Map();matching.forEach(function(r){var key=groupKey(r);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r);});
+      var keys=Array.from(groups.keys()).sort(function(a,b){var x=JSON.parse(a),y=JSON.parse(b);return String(x[0]).localeCompare(String(y[0]),"ko",{numeric:true}) || String(y[1]).localeCompare(String(x[1]),"ko",{numeric:true});});
+      keys.slice(0,groupLimit).forEach(function(key){
+        var items=groups.get(key), expanded=openGroup===key;
+        var section=document.createElement("section"), toggle=focusKey(document.createElement("button"),"group-"+key);
+        toggle.className="btn group-toggle";toggle.dataset.view="true";toggle.setAttribute("aria-expanded",String(expanded));
+        toggle.textContent=contextLabel(items[0])+" · "+items.length+"건 "+(expanded ? "▴" : "▾");
+        toggle.onclick=function(){openGroup=expanded ? null : key;paintRows();};section.appendChild(toggle);
+        if(expanded)renderGroup(section,key,items);tb.appendChild(section);
+      });
+      if(keys.length>groupLimit){
+        var moreGroups=focusKey(document.createElement("button"),"groups-more");moreGroups.className="btn list-more";moreGroups.dataset.view="true";
+        moreGroups.textContent="20세대 더 보기 ("+groupLimit+" / "+keys.length+"세대)";
+        moreGroups.onclick=function(){groupLimit+=20;paintRows();};tb.appendChild(moreGroups);
+      }
+    }
+    if(activeKey){
+      var replacement=Array.from(tb.querySelectorAll("[data-focus-key]")).find(function(el){return el.dataset.focusKey===activeKey;});
+      (replacement||$("list"+(listScope==="current" ? "Current" : "All"))).focus({preventScroll:true});
+    }
     paintRetention();
     var recent=rows[rows.length-1];$("recentEntry").hidden=!recent;
     if(recent){$("recentContext").textContent=recent.dong+"동 "+recent.unit+"호 · "+(recent.spot||"위치 미지정")+" · "+(recent.trade||"공종 미지정");$("recentText").textContent=recent.text;}
@@ -734,7 +819,7 @@
   function contextLabel(value){return value.dong+"동 "+(value.unit ? value.unit+"호" : "호수 미지정");}
   function applyContext(next){
     Object.assign(cur,next);$("unitIn").value="";
-    save();paintCtx();paintNext();paintDongs();$("inputWarn").hidden=true;say(contextLabel(cur));
+    resetListPages();openGroup=groupKey(cur);save();paintCtx();paintNext();paintDongs();paintRows();$("inputWarn").hidden=true;say(contextLabel(cur));
     if(listening)openRecognition();
   }
   function requestContext(next){

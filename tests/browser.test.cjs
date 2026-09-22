@@ -83,6 +83,7 @@ test('R5: creation time persists and export keeps each row date; old rows stay u
     localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1501',text:'기존 항목'}, {dong:'101',unit:'1401',text:'어제 항목',createdAt:new Date(Date.now()-86400000).toISOString()}]}));
     Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copied=text;}}});
   });
+  await page.locator('#listAll').click();await page.locator('.group-toggle').filter({hasText:'1501호'}).click();
   assert.match(await page.locator('#tb').textContent(),/날짜 미상/);
   await page.locator('#copyBtn').click();
   const text=await page.evaluate(()=>window.copied);
@@ -123,13 +124,15 @@ test('R6: seven-day boundary, 3/1 day warning, unknown dates and download marker
     {dong:'101',unit:'1503',text:'삼일',createdAt:age(4)},
     {dong:'101',unit:'1504',text:'미상'}]}));
  },{clock:'2026-09-22T03:00:00Z'});
- assert.equal(await page.locator('#tb .record-row').count(),3);
+ await page.locator('#listAll').click();
+ assert.equal(await page.locator('.group-toggle').count(),3);
+ await page.locator('.group-toggle').filter({hasText:'1504호'}).click();
  const warning=await page.locator('#retentionWarn').textContent();
  assert.match(warning,/1건이 1일/);assert.match(warning,/1건이 3일/);assert.match(warning,/날짜 미상 1건/);
  const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();await pending;
  assert.match(await page.locator('#tb').textContent(),/요청 2026-09-22/);
  await page.clock.fastForward(86400000);
- assert.equal(await page.locator('#tb .record-row').count(),2);
+ assert.equal(await page.locator('.group-toggle').count(),2);
  assert.match(await page.locator('#tb').textContent(),/미상/);
 });
 
@@ -322,12 +325,12 @@ test('R15: editing fixes record and core without extending retention; draft stay
  assert.equal(saved.rows[0].createdAt,before);assert.equal(saved.rows[0].core,'1코어');assert.equal(saved.rows[0].unit,'1401');assert.equal(saved.rows[0].text,'수정한 내용');
  assert.equal(saved.rows[0].downloadRequestedAt,undefined);assert.equal(saved.draft,'다음 항목 초안');
  await page.evaluate(()=>recognizers[0].onresult({resultIndex:0,results:[Object.assign([{transcript:'오래된 결과'}],{isFinal:true})]}));
- assert.equal(await page.locator('#tb .record-row').count(),1);assert.equal(await page.evaluate(()=>recognizers.length),2);
- await page.reload();assert.match(await page.locator('#tb').textContent(),/수정한 내용/);
+ assert.equal(await page.locator('#tb .record-row').count(),0);assert.equal(await page.evaluate(()=>recognizers.length),2);
+ await page.reload();await page.locator('#listAll').click();await page.locator('.group-toggle').filter({hasText:'1401호'}).click();assert.match(await page.locator('#tb').textContent(),/수정한 내용/);
 });
 test('R15: edit cannot revive a record expiring while the dialog is open',async t=>{
  const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'만료 직전',createdAt:new Date(Date.parse('2026-09-22T03:00:00Z')-7*86400000+10000).toISOString()}]})),{clock:'2026-09-22T03:00:00Z'});
- await page.locator('#tb .record-row').click();await page.locator('#detailEdit').click();await page.clock.fastForward(11000);await page.locator('#editSave').click();
+ await selectUnit(page);await page.locator('#tb .record-row').click();await page.locator('#detailEdit').click();await page.clock.fastForward(11000);await page.locator('#editSave').click();
  assert.match(await page.locator('#editWarn').textContent(),/보관 기간/);assert.equal(await page.locator('#tb .record-row').count(),0);
 });
 
@@ -338,7 +341,7 @@ test('R16: single and all deletion can be restored without changing insertion or
  const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows);
  await page.locator('#tb .record-row').first().click();await page.locator('#detailDelete').click();await page.locator('#restoreBtn').click();
  assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows),before);
- await page.locator('#undoBtn').click();assert.match(await page.locator('#tb').textContent(),/먼저 입력/);assert.doesNotMatch(await page.locator('#tb').textContent(),/나중 입력/);
+ await page.locator('#undoBtn').click();await page.locator('#listAll').click();await page.locator('.group-toggle').filter({hasText:'1401호'}).click();assert.match(await page.locator('#tb').textContent(),/먼저 입력/);assert.doesNotMatch(await page.locator('#tb').textContent(),/나중 입력/);
  await page.locator('#restoreBtn').click();
  page.once('dialog',d=>d.accept());await page.locator('#clearBtn').click();assert.equal(await page.locator('#tb .record-row').count(),0);
  await page.locator('#restoreBtn').click();assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows),before);
@@ -371,4 +374,56 @@ test('R14: legacy oversized metadata is repairable and cannot create new unexpor
  assert.equal(await page.locator('#tb .record-row').count(),0);assert.equal(await page.locator('#textIn').inputValue(),'남겨 둘 내용');
  await page.locator('#spots').getByRole('button',{name:'거실',exact:true}).click();await page.locator('#addBtn').click();
  assert.equal(await page.locator('#tb .record-row').count(),1);
+});
+
+function seedMany(){
+ const rows=Array.from({length:125},(_,i)=>({dong:'101',unit:'1503',core:'2코어',spot:i%2?'거실':'침실1',trade:i%2?'타일':'도장',text:'확인 항목 '+String(i+1).padStart(3,'0')+' 벽면 보수 필요',createdAt:new Date().toISOString()}));
+ for(let i=0;i<875;i++)rows.push({dong:String(102+Math.floor(i/100)),unit:String(1001+i%100),spot:'거실',trade:'타일',text:'다른 세대 확인 '+i,createdAt:new Date().toISOString()});
+ localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows,current:{dong:'101',unit:'1503',spot:'거실',trade:'타일'}}));
+ Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copied=text;}}});
+}
+
+test('R19: 1000 records stay bounded; scope, search, trade and XLSX retain all data',async t=>{
+ const page=await pageFor(t,seedMany);
+ assert.equal(await page.locator('#listCurrent').getAttribute('aria-pressed'),'true');
+ assert.match(await page.locator('#cnt').textContent(),/1000건/);
+ assert.equal(await page.locator('#tb .record-row').count(),20);
+ assert.match(await page.locator('#tb .record-row').first().textContent(),/125/);
+ await page.locator('.list-more').click();assert.equal(await page.locator('#tb .record-row').count(),40);
+ await page.locator('#listSearch').fill('확인 007');assert.equal(await page.locator('#tb .record-row').count(),1);
+ await page.locator('#listTrade').selectOption(JSON.stringify('타일'));assert.equal(await page.locator('#tb .record-row').count(),0);
+ await page.locator('#listTrade').selectOption(JSON.stringify('도장'));assert.equal(await page.locator('#tb .record-row').count(),1);
+ await page.locator('#copyBtn').click();assert.equal((await page.evaluate(()=>window.copied)).trim().split('\n').length,1001);
+ const pending=page.waitForEvent('download');await page.locator('#downloadBtn').click();const download=await pending;
+ const chunks=[];for await(const chunk of await download.createReadStream())chunks.push(chunk);
+ const output=require('node:child_process').execFileSync(process.env.PYTHON_PATH||'python',['-c','import sys,io,zipfile,xml.etree.ElementTree as E; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); t=E.fromstring(z.read("xl/worksheets/sheet1.xml")); print(len(t.findall(".//{*}row")))'],{input:Buffer.concat(chunks),encoding:'utf8'});
+ assert.equal(Number(output.trim()),1004); // Four template rows and all 1000 records.
+ await page.locator('#listReset').click();await page.locator('#listAll').click();
+ assert.equal(await page.locator('.group-toggle').count(),20);assert.equal(await page.locator('#tb .record-row').count(),20);
+ await page.locator('.list-more').filter({hasText:'20세대'}).click();assert.equal(await page.locator('.group-toggle').count(),40);
+ await page.locator('#listSearch').fill('109동 다른');assert.ok(await page.locator('.group-toggle').count()>0);
+ assert.equal(await page.locator('#tb .record-row').count(),0);
+ await page.locator('.group-toggle').first().click();assert.equal(await page.locator('#tb .record-row').count(),1);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows.length),1000);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);
+});
+
+test('R19: filtered detail edits and deletes exactly one row, and scope follows unit moves',async t=>{
+ const page=await pageFor(t,seedMany);await page.locator('#listSearch').fill('007');
+ await page.locator('.record-row').click();await page.locator('#detailEdit').click();await page.locator('#editText').fill('고친 한 항목');await page.locator('#editSave').click();
+ assert.equal(await page.locator('.record-row').count(),0);
+ let rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows);assert.equal(rows[6].text,'고친 한 항목');assert.match(rows[7].text,/008/);
+ await page.locator('#listSearch').fill('고친');await page.locator('.record-row').click();await page.locator('#detailDelete').click();
+ assert.equal(await page.locator('.record-row').count(),0);await page.locator('#restoreBtn').click();assert.equal(await page.locator('.record-row').count(),1);
+ await page.locator('#listReset').click();await selectUnit(page,'1403');assert.equal(await page.locator('.record-row').count(),0);assert.match(await page.locator('#listSummary').textContent(),/1403호/);
+ await page.locator('#listAll').click();await page.locator('.group-toggle').filter({hasText:'101동 1503호'}).click();assert.equal(await page.locator('.record-row').count(),20);
+ await page.locator('.group-toggle').filter({hasText:'101동 1503호'}).click();assert.equal(await page.locator('.record-row').count(),0);
+});
+
+test('R19: read-only tab can browse and search without enabling mutations',async t=>{
+ const page=await pageFor(t,seedMany);const second=await page.context().newPage();await second.goto(origin);await second.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+ assert.equal(await second.locator('#addBtn').isDisabled(),true);
+ await second.locator('#listSearch').fill('007');await second.locator('.record-row').click();
+ assert.equal(await second.locator('#detailEdit').isDisabled(),true);assert.equal(await second.locator('#detailDelete').isDisabled(),true);
+ await second.locator('#detailClose').click();assert.equal(await second.locator('#detailDialog').isVisible(),false);
 });

@@ -125,6 +125,10 @@
   .detail-meta dt{color:var(--ink2)}.detail-meta dd{margin:0;overflow-wrap:anywhere}
   #detailText{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.6}
   @media(max-width:899px){
+    .ctx.compact{padding:8px 12px;border-radius:0 0 8px 8px}
+    .ctx.compact .big{font-size:17px}
+    .ctx.compact .big::before{content:"입력 중 · ";font-family:var(--sans);font-size:12px;font-weight:400}
+    .ctx.compact .line2{display:none}
     .record-meta{display:none}
     .record-row{grid-template-columns:minmax(0,1fr) 20px;gap:3px 10px;padding:11px 0}
     .record-meta{grid-column:1;font-size:11px;white-space:normal}
@@ -148,6 +152,7 @@
     <p class="sub">동·호수를 정하고, 말하거나 눌러서 기록한 뒤 엑셀로 받으세요. 기록은 이 기기에만 저장됩니다.</p>
   </div>
 
+  <span id="ctxAnchor" aria-hidden="true" style="height:0;margin-bottom:-12px"></span>
   <div class="ctx" id="ctx">
     <div class="big" id="ctxBig">동·호수를 정하세요</div>
     <div class="line2" id="ctxSub"></div>
@@ -769,7 +774,12 @@
     $("tradeChoices").innerHTML=S.trades.map(function(v){return '<option>'+esc(v)+'</option>';}).join("");
     $("editDialog").showModal();
   }
-  function closeRowEditor(){editingRow=null;$("editDialog").close();if(listening)openRecognition();}
+  function closeRowEditor(){
+    var row=editingRow;editingRow=null;$("editDialog").close();
+    var target=Array.from($("tb").querySelectorAll(".record-row")).find(function(el){return el.dataset.focusKey==="row-"+rowKeys.get(row);});
+    (target||$("list"+(listScope==="current" ? "Current" : "All"))).focus({preventScroll:true});
+    if(listening)openRecognition();
+  }
   $("editCancel").onclick=closeRowEditor;
   $("editDialog").addEventListener("cancel",function(e){e.preventDefault();closeRowEditor();});
   $("editSave").onclick=function(){
@@ -1158,6 +1168,18 @@
     paintPad(); paintNext(); paintRows(); paintCtx(); paintStat(); paintSetupFields();
   }
 
+  // The anchor stays before the sticky header; hysteresis avoids size/scroll feedback.
+  var contextFrame=0;
+  function fitContext(){
+    contextFrame=0;
+    var ctx=$("ctx"), top=$("ctxAnchor").getBoundingClientRect().top;
+    var safeTop=parseFloat(getComputedStyle(ctx).top)||0;
+    if(top<safeTop-80)ctx.classList.add("compact");
+    else if(top>safeTop-20)ctx.classList.remove("compact");
+  }
+  function queueContext(){if(!contextFrame)contextFrame=requestAnimationFrame(fitContext);}
+  window.addEventListener("scroll",queueContext,{passive:true});
+  window.addEventListener("resize",queueContext);
   function fitKeyboard(){
     var v = window.visualViewport;
     document.documentElement.style.setProperty("--keyboard-inset", (v ? Math.max(0,innerHeight-v.height-v.offsetTop) : 0)+"px");
@@ -1209,6 +1231,7 @@
     });
   }else $("offlineNotice").textContent="이 브라우저에서는 오프라인 준비를 지원하지 않습니다.";
   paintAll();
+  fitContext();
   maintainRetention();
   if(!hasEditLock)protectEditor(navigator.locks ? "다른 창에서 편집 중입니다. 이 창은 읽기 전용입니다. 편집 중인 창을 닫은 뒤 새로고침하세요." : "이 브라우저는 안전한 저장 보호를 지원하지 않습니다. 최신 브라우저로 열어 주세요. 현재 기록은 엑셀로 받을 수 있습니다.");
   document.documentElement.dataset.ready="true";

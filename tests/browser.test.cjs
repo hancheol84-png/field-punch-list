@@ -427,3 +427,29 @@ test('R19: read-only tab can browse and search without enabling mutations',async
  assert.equal(await second.locator('#detailEdit').isDisabled(),true);assert.equal(await second.locator('#detailDelete').isDisabled(),true);
  await second.locator('#detailClose').click();assert.equal(await second.locator('#detailDialog').isVisible(),false);
 });
+
+
+test('R20: compact sticky context leaves room for rows on mobile; desktop and detail fit',async t=>{
+ const page=await pageFor(t,seedMany);await page.emulateMedia({colorScheme:'dark'});
+ await page.evaluate(()=>window.scrollTo(0,0));
+ const original=(await page.locator('#ctx').boundingBox()).height;
+ await page.evaluate(()=>window.scrollTo(0,document.querySelector('#tb').getBoundingClientRect().top+scrollY-55));
+ await page.waitForFunction(()=>document.querySelector('#ctx').classList.contains('compact'));
+ const compact=await page.locator('#ctx').boundingBox();assert.ok(compact.height<original && compact.height<=50);
+ assert.ok(compact.y>=0 && compact.y<2);
+ const visible=await page.locator('.record-row').evaluateAll(els=>els.filter(el=>{const r=el.getBoundingClientRect();return r.top>=50 && r.bottom<=innerHeight;}).length);
+ assert.ok(visible>=7,'at least seven complete short records should fit below the compact header');
+ await page.screenshot({path:path.join(root,'.test-output/compact-mobile-dark.png')});
+ await page.evaluate(()=>window.scrollTo(0,document.querySelector('#listCard').getBoundingClientRect().top+scrollY-55));
+ await page.screenshot({path:path.join(root,'.test-output/compact-mobile-controls.png')});
+ await page.locator('#listAll').click();await page.locator('#listSearch').fill('101동');
+ await page.screenshot({path:path.join(root,'.test-output/compact-mobile-groups.png')});
+ await page.locator('.record-row').first().click();await page.screenshot({path:path.join(root,'.test-output/compact-mobile-detail.png')});await page.locator('#detailClose').click();
+ await page.evaluate(()=>window.scrollTo(0,0));await page.waitForFunction(()=>!document.querySelector('#ctx').classList.contains('compact'));
+ assert.ok((await page.locator('#ctx').boundingBox()).height>=original);
+ await page.setViewportSize({width:1280,height:900});await page.emulateMedia({colorScheme:'light'});
+ await page.locator('#listCurrent').click();await page.locator('#listReset').click();
+ await page.evaluate(()=>window.scrollTo(0,document.querySelector('#listCard').getBoundingClientRect().top+scrollY-120));
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),1280);
+ await page.screenshot({path:path.join(root,'.test-output/compact-desktop.png')});
+});

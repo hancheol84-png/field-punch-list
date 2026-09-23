@@ -25,8 +25,8 @@ from openpyxl.utils import get_column_letter
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 
-HEADERS = ["점검일", "동", "코어", "호수", "위치", "공종", "내용"]
-WIDTHS = [11, 7, 9, 8, 13, 11, 62]
+HEADERS = ["점검일", "동", "코어", "호수", "위치", "공종", "내용", "확인사항"]
+WIDTHS = [11, 7, 9, 8, 13, 11, 62, 20]
 
 NAVY = "0F3557"
 THIN = Side(style="thin", color="B7BFC8")
@@ -117,6 +117,8 @@ def make_sheet(wb, title, rows, site, inspector, date_text):
         ws[ref].alignment = Alignment(horizontal="left", vertical="center")
     ws.merge_cells("B2:C2")
     ws.merge_cells("B3:C3")
+    ws.merge_cells("G2:H2")
+    ws.merge_cells("G3:H3")
     for r in (2, 3):
         ws.row_dimensions[r].height = 20
 
@@ -132,19 +134,23 @@ def make_sheet(wb, title, rows, site, inspector, date_text):
     for n, row in enumerate(sort_rows(rows)):
         r = 5 + n
         for i, key in enumerate(HEADERS, 1):
-            c = ws.cell(row=r, column=i, value=row.get(key, ""))
+            value = ("공종 확인필요" if not str(row.get("공종") or "").strip() else "") if key == "확인사항" else row.get(key, "")
+            c = ws.cell(row=r, column=i, value=value)
+            c.data_type = "s"
+            if key == "확인사항" and value:
+                c.fill = PatternFill("solid", fgColor="FFFFE8A3")
             c.font = BODY_FONT
             c.border = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
             c.alignment = Alignment(
                 horizontal="left" if key == "내용" else "center",
-                vertical="center", wrap_text=(key == "내용"))
+                vertical="center", wrap_text=(key in ("내용", "확인사항")))
         # 내용이 길면 줄바꿈되도록 행 높이는 지정하지 않는다 (엑셀 자동 맞춤)
 
     end = 4 + len(rows)
     ws.auto_filter.ref = "A4:%s%d" % (last, end)
     ws.freeze_panes = "A5"
 
-    ws.page_setup.orientation = "portrait"
+    ws.page_setup.orientation = "landscape"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
@@ -161,14 +167,23 @@ def build(rows, out, site, inspector, date_text):
     wb.remove(wb.active)
     make_sheet(wb, "전체", rows, site, inspector, date_text)
 
+    pending = [r for r in rows if not str(r.get("공종") or "").strip()]
     trades = []
-    for r in rows:
-        t = (r.get("공종") or "미지정").replace("/", "·")
-        if t not in trades:
-            trades.append(t)
-    for t in trades:
-        part = [r for r in rows if (r.get("공종") or "미지정").replace("/", "·") == t]
-        make_sheet(wb, t, part, site, inspector, date_text)
+    used = {"전체", "공종 확인필요", "history"}
+    if pending:
+        make_sheet(wb, "공종 확인필요", pending, site, inspector, date_text)
+        trades.append("공종 확인필요")
+    keys = list(dict.fromkeys(r["공종"] for r in rows if str(r.get("공종") or "").strip()))
+    for trade in keys:
+        base = re.sub(r"[\[\]:*?/\\\x00-\x1f]", "·", trade).strip("'").strip()[:31] or "미지정"
+        name, suffix = base, 2
+        while name.lower() in used:
+            tail = " (%d)" % suffix
+            name = base[:31-len(tail)] + tail
+            suffix += 1
+        used.add(name.lower())
+        make_sheet(wb, name, [r for r in rows if r.get("공종") == trade], site, inspector, date_text)
+        trades.append(name)
 
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     wb.save(out)

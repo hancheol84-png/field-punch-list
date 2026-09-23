@@ -559,3 +559,18 @@ test('R23: existing manual settings migrate without retroactive classification',
  const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:3,rows:[{dong:'101',unit:'1503',text:'벽지 들뜸',trade:''}],current:{dong:'101',unit:'1503',spot:'거실',trade:'타일'}})));
  assert.equal(await page.locator('#tradeAuto').getAttribute('aria-pressed'),'false');await page.locator('#textIn').fill('창짝 개폐 불량');await page.locator('#addBtn').click();const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[0].trade,'');assert.equal(state.rows[1].trade,'타일');assert.equal(state.version,4);
 });
+
+
+test('R23: correction and original restore recalculate only automatic trade',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('겸출 보수');await page.locator('#addBtn').click();
+ const read=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0]);
+ const before=await read();assert.equal(before.trade,'');await page.locator('#recentReview').click();await page.locator('#correctionChoices button').click();
+ let row=await read();assert.equal(row.trade,'골조견출');assert.equal(row.inputText,'겸출 보수');assert.equal(row.createdAt,before.createdAt);
+ await page.locator('#originalBlock summary').click();page.once('dialog',d=>d.accept());await page.locator('#restoreOriginal').click();assert.equal((await read()).trade,'');
+ await page.locator('#detailDialog').screenshot({path:path.join(root,'.test-output/trade-review-mobile.png')});
+ await page.locator('#detailEdit').click();await page.locator('#editTradeMode').selectOption('manual');await page.locator('#editTrade').fill('미장');await page.locator('#editSave').click();
+ await page.locator('#recentReview').click();await page.locator('#correctionChoices button').click();assert.equal((await read()).trade,'미장');
+ await page.locator('#detailClose').click();await page.locator('#listNeedsReview').click();assert.equal(await page.locator('.record-row').count(),0);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:path.join(root,'.test-output/trade-desktop.png'),fullPage:true});
+});

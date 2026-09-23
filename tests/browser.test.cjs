@@ -481,7 +481,7 @@ test('R21: keyboard input and draft saved during unit move preserve wording',asy
 
 test('R22: review preserves original, learns only after opt-in, and remembers across reload',async t=>{
  const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#micBtn').click();await speak(page,'겸출 보수');
- let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.version,3);assert.equal(state.rows[0].text,'겸출 보수');
+ let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.version,4);assert.equal(state.rows[0].text,'겸출 보수');
  const created=state.rows[0].createdAt;
  await page.locator('#recentReview').click();assert.equal(await page.locator('#rememberCorrection').isChecked(),false);
  await page.locator('#correctionChoices button').click();assert.equal(await page.locator('#detailText').textContent(),'견출 보수');
@@ -526,7 +526,7 @@ test('R22: read-only review cannot apply or remember, and expired records cannot
 test('R22: version 2 migration keeps rows and draft, bad rules preserve original storage',async t=>{
  const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:2,rows:[{dong:'101',unit:'1503',text:'기존 기록'}],draft:'기존 초안',current:{dong:'101',unit:'1503',spot:'',trade:''}})));
  assert.equal(await page.locator('#textIn').inputValue(),'기존 초안');await page.locator('#addBtn').click();
- const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.version,3);assert.equal(state.rows[0].text,'기존 기록');assert.equal(state.rows[1].inputText,'기존 초안');
+ const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.version,4);assert.equal(state.rows[0].text,'기존 기록');assert.equal(state.rows[1].inputText,'기존 초안');
  const bad=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:3,rows:[],speechRules:[{from:'없음',to:'있음'}]})));
  assert.equal(await bad.locator('#storageRecovery').isVisible(),true);assert.deepEqual(await bad.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).speechRules),[{from:'없음',to:'있음'}]);
 });
@@ -534,4 +534,28 @@ test('R22: failed registration retains raw draft before any remembered correctio
  const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:3,rows:[],speechRules:[{from:'겸출',to:'견출'}]})));
  await page.locator('#textIn').fill('겸출 보수');await page.locator('#addBtn').click();assert.equal(await page.locator('#textIn').inputValue(),'겸출 보수');
  await selectUnit(page);await page.locator('#addBtn').click();const row=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0]);assert.equal(row.inputText,'겸출 보수');assert.equal(row.text,'견출 보수');
+});
+
+
+test('R23: automatic trade is decided per record, manual choice wins, source text stays intact',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#tradeAuto').click();await page.locator('#micBtn').click();
+ const texts=['침실1 벽지 이음부 들뜸','거실 창짝 개폐 불량','침실1 우측 벽 균열','공용욕실 세면대 배수 불량'];
+ for(const text of texts)await speak(page,text);
+ let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.deepEqual(state.rows.map(r=>r.text),texts);assert.deepEqual(state.rows.map(r=>r.trade),['도배','창호','','설비']);assert.equal(state.current.trade,'');
+ await page.locator('#trades').getByRole('button',{name:'타일',exact:true}).click();await speak(page,'벽지 이음부 들뜸');
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[4].trade,'타일');assert.equal(state.rows[4].tradeMode,'manual');
+ await page.locator('#tradeAuto').click();await speak(page,'오염 확인');assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[5].trade),'');
+ await page.locator('#listNeedsReview').click();assert.equal(await page.locator('.record-row').count(),2);
+ await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.ready==='true');assert.equal(await page.locator('#tradeAuto').getAttribute('aria-pressed'),'true');
+});
+test('R23: edits recalculate automatic trade, manual edits clear review and stay protected',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#textIn').fill('벽지 이음부 들뜸');await page.locator('#addBtn').click();
+ await page.locator('#recentEdit').click();assert.equal(await page.locator('#editTrade').inputValue(),'도배');await page.locator('#editText').fill('우측 벽 균열');await page.locator('#editSave').click();
+ let row=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0]);assert.equal(row.trade,'');const created=row.createdAt;
+ await page.locator('#listNeedsReview').click();await page.locator('.record-row').click();await page.locator('#detailEdit').click();await page.locator('#editTradeMode').selectOption('manual');await page.locator('#editTrade').fill('미장');await page.locator('#editSave').click();assert.equal(await page.locator('.record-row').count(),0);
+ await page.locator('#recentEdit').click();await page.locator('#editText').fill('벽지 이음부 들뜸');await page.locator('#editSave').click();row=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows[0]);assert.equal(row.trade,'미장');assert.equal(row.createdAt,created);
+});
+test('R23: existing manual settings migrate without retroactive classification',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:3,rows:[{dong:'101',unit:'1503',text:'벽지 들뜸',trade:''}],current:{dong:'101',unit:'1503',spot:'거실',trade:'타일'}})));
+ assert.equal(await page.locator('#tradeAuto').getAttribute('aria-pressed'),'false');await page.locator('#textIn').fill('창짝 개폐 불량');await page.locator('#addBtn').click();const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[0].trade,'');assert.equal(state.rows[1].trade,'타일');assert.equal(state.version,4);
 });

@@ -574,3 +574,15 @@ test('R23: correction and original restore recalculate only automatic trade',asy
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);
  await page.setViewportSize({width:1280,height:900});await page.screenshot({path:path.join(root,'.test-output/trade-desktop.png'),fullPage:true});
 });
+
+
+test('R25: negative and uncertain speech needs review; adjacent drain words do not override wallpaper',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#tradeAuto').click();await page.locator('#micBtn').click();
+ const phrases=['벽지 들뜸 없음','타일 깨짐 없음','벽지 보수가 필요할 수도 있음','타일 들뜸인 것 같음','타일 균열','조명 깜빡임','배수관 주변 벽지 들뜸','배수관 주변 벽지 들뜸 및 배수 불량'];
+ for(const phrase of phrases)await speak(page,phrase);
+ const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows);
+ assert.deepEqual(rows.map(row=>row.text),phrases);
+ assert.deepEqual(rows.map(row=>row.trade),['','','','','타일','전기','도배','']);
+ assert.deepEqual(rows.map(row=>row.tradeReason).slice(0,4),Array(4).fill('부정·추측 표현: 확인 필요'));
+ await page.locator('#listNeedsReview').click();assert.equal(await page.locator('.record-row').count(),5);
+});

@@ -7,3 +7,19 @@ test('R23: generic, missing, competing and uncertain clues require review',()=>{
  assert.equal(T.classify('창틀 주변 벽지 들뜸').trade,'도배');assert.equal(T.classify('콘센트 주변 벽지 찢어짐').trade,'도배');
  assert.equal(T.note({trade:''}),'공종 확인필요');assert.equal(T.note({trade:'  '}),'공종 확인필요');assert.equal(T.note({trade:'직접 지정'}),'');
 });
+
+
+test('R25: negated and tentative findings stay unassigned for review',()=>{
+ for(const text of ['벽지 들뜸 없음','타일 깨짐 없음','세면대 누수 없음','창짝 개폐 불량 없음','페인트 박리 없음','견출 보수 불필요','벽지 보수가 필요할 수도 있음','타일 들뜸인 것 같음','창호 의심','누수 여부 확인']){
+  const result=T.classify(text);assert.equal(result.trade,'',text);assert.match(result.reason,/부정·추측/);
+ }
+});
+
+test('R25: common explicit defect terms classify by their stated object and nearby symptom',()=>{
+ for(const [text,trade] of [['벽지 손상','도배'],['타일 균열','타일'],['조명 깜빡임','전기'],['스위치 고정 불량','전기'],['페인트 기포','도장'],['페인트 균열','도장'],['배수관 주변 벽지 들뜸','도배'],['세면대 배수관 파손','설비']])assert.equal(T.classify(text).trade,trade,text);
+});
+
+test('R25: object names alone do not impersonate symptoms; mixed clues remain reviewable',()=>{
+ for(const text of ['배수관','배수관 점검','등기구','벽지 또는 페인트 보수','배수관 주변 벽지 들뜸 및 배수 불량'])assert.equal(T.classify(text).trade,'',text);
+ assert.match(T.classify('배수관 주변 벽지 들뜸 및 배수 불량').reason,/여러 .*확인 필요/);
+});

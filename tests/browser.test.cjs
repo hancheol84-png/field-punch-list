@@ -586,3 +586,13 @@ test('R25: negative and uncertain speech needs review; adjacent drain words do n
  assert.deepEqual(rows.map(row=>row.tradeReason).slice(0,4),Array(4).fill('부정·추측 표현: 확인 필요'));
  await page.locator('#listNeedsReview').click();assert.equal(await page.locator('.record-row').count(),5);
 });
+test('R26: one manually corrected safe word can be opted into local learning',async t=>{
+ const page=await pageFor(t);await selectUnit(page);
+ await page.locator('#textIn').fill('벽치 들뜸');await page.locator('#addBtn').click();await page.locator('#recentEdit').click();
+ await page.locator('#editText').fill('벽지 들뜸');assert.equal(await page.locator('#editLearnBox').isVisible(),true);assert.equal(await page.locator('#editLearn').isChecked(),false);await page.locator('#editDialog').screenshot({path:path.join(root,'.test-output/speech-learning-mobile.png')});
+ await page.locator('#editSave').click();let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.deepEqual(state.speechRules,[]);
+ await page.locator('#textIn').fill('벽치 재확인');await page.locator('#addBtn').click();await page.locator('#recentEdit').click();await page.locator('#editText').fill('벽지 재확인');
+ await page.locator('#editLearn').check();await page.locator('#editSave').click();state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.deepEqual(state.speechRules,[{from:'벽치',to:'벽지'}]);
+ await page.locator('#textIn').fill('벽치 주변 들뜸');await page.locator('#addBtn').click();state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[2].text,'벽지 주변 들뜸');assert.equal(state.rows[2].inputText,'벽치 주변 들뜸');
+ await page.locator('#speechSetup summary').click();await page.getByRole('button',{name:'벽치 보정 기억 지우기'}).click();state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.deepEqual(state.speechRules,[]);
+});

@@ -286,7 +286,7 @@
     </details>
   </div>
 
-  <p class="note">앱 버전 2026.09.24.1 · 한 현장의 입력과 엑셀 받기</p>
+  <p class="note">앱 버전 2026.09.24.2 · 한 현장의 입력과 엑셀 받기</p>
   <!-- 진단 -->
   <div class="card">
     <details>
@@ -324,6 +324,7 @@
   <label class="f" for="editTradeMode">공종 지정 방식</label><select id="editTradeMode"><option value="manual">직접 지정</option><option value="auto">내용으로 자동 분류</option></select><p id="editTradeHint" class="note"></p>
   <label class="f" for="editTrade">공종</label><input id="editTrade" list="tradeChoices"><datalist id="tradeChoices"></datalist>
   <label class="f" for="editText">내용</label><textarea id="editText" rows="4"></textarea>
+  <div id="editLearnBox" hidden><label class="remember-choice"><input type="checkbox" id="editLearn"><span id="editLearnText"></span></label><p class="note">직접 고친 한국어 단어 하나만 이 기기에 기억합니다. 숫자·방향·부정·추측 표현, 여러 단어 수정은 제안하지 않습니다.</p></div>
   <div class="row"><button class="btn pri" id="editSave">수정 저장</button><button class="btn" id="editCancel">취소</button></div>
 </dialog>
 <dialog id="contextDialog" aria-labelledby="contextTitle">
@@ -772,7 +773,7 @@
     $("editDong").value=row.dong;$("editUnit").value=row.unit;$("editSpot").value=row.spot||"";$("editTrade").value=row.trade||"";$("editText").value=row.text;
     $("spotChoices").innerHTML=S.spots.map(function(v){return '<option>'+esc(v)+'</option>';}).join("");
     $("tradeChoices").innerHTML=S.trades.map(function(v){return '<option>'+esc(v)+'</option>';}).join("");
-    $("editTradeMode").value=row.tradeMode||"manual";previewTrade();
+    $("editTradeMode").value=row.tradeMode||"manual";previewTrade();previewCorrectionLearning();
     $("editDialog").showModal();
   }
   function previewTrade(){
@@ -780,7 +781,12 @@
     if(automatic){var decision=PunchTrade.classify($("editText").value);$("editTrade").value=decision.trade;$("editTradeHint").textContent=decision.trade ? "자동 분류: "+decision.trade : PunchTrade.REVIEW+" · "+decision.reason;}
     else $("editTradeHint").textContent="직접 지정한 공종은 내용 수정으로 바뀌지 않습니다. 빈칸이면 공종 확인필요로 표시됩니다.";
   }
-  $("editTradeMode").onchange=previewTrade;$("editText").addEventListener("input",previewTrade);
+  function previewCorrectionLearning(){
+    var box=$("editLearnBox"),rule=editingRow ? PunchSpeech.correctionCandidate(editingRow.text,$("editText").value.trim(),S.speechRules) : null;
+    $("editLearn").checked=false;box.hidden=!rule;
+    if(rule){$("editLearnText").textContent="다음부터 ‘"+rule.from+"’를 ‘"+rule.to+"’로 자동 보정 (이 기기)";$("editLearn").disabled=!canEdit();}
+  }
+  $("editTradeMode").onchange=previewTrade;$("editText").addEventListener("input",function(){previewTrade();previewCorrectionLearning();});
   function closeRowEditor(){
     var row=editingRow;editingRow=null;$("editDialog").close();
     var target=Array.from($("tb").querySelectorAll(".record-row")).find(function(el){return el.dataset.focusKey==="row-"+rowKeys.get(row);});
@@ -798,9 +804,11 @@
     if(!error && (!/^\d+$/.test(patch.unit) || !patch.text))error="호수는 숫자로, 내용은 공백 없이 입력해 주세요.";
     if(!error && Object.values(patch).some(function(v){return v.length>32767;}))error="엑셀에 넣을 수 있도록 각 항목을 32,767자 이하로 줄여 주세요.";
     if(error){$("editWarn").textContent=error;$("editWarn").hidden=false;return;}
+    var learned=editingRow && $("editLearn").checked ? PunchSpeech.correctionCandidate(editingRow.text,patch.text,S.speechRules) : null;
     patch.core=coreOf(patch.unit);
     if(patch.text!==editingRow.text)editingRow.correctionLog=[];
     Object.assign(editingRow,patch);delete editingRow.downloadRequestedAt;
+    if(learned){S.speechRules=S.speechRules.filter(function(rule){return rule.from!==learned.from;}).concat([learned]);paintSpeechRules();}
     save();paintRows();closeRowEditor();flash("수정했습니다. 변경한 내용은 엑셀로 다시 받아 주세요.");
   };
   var RETENTION = 7*24*60*60*1000;

@@ -1,6 +1,17 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),T=require('../trade.js');
 test('R23: clear object and issue rules classify without changing text',()=>{
- for(const [text,trade] of [['침실1 벽지 이음부 들뜸','도배'],['거실 창짝 개폐 불량','창호'],['공용욕실 세면대 배수 불량','설비'],['주방 타일 줄눈 탈락','타일'],['페인트 벗겨짐','도장'],['콘센트 전원 불량','전기']])assert.equal(T.classify(text).trade,trade,text);
+ for(const [text,trade] of [['침실1 벽지 이음부 들뜸','도배'],['거실 창짝 개폐 불량','PL창호'],['공용욕실 세면대 배수 불량','설비'],['주방 타일 줄눈 탈락','타일'],['페인트 벗겨짐','도장'],['콘센트 전원 불량','전기']])assert.equal(T.classify(text).trade,trade,text);
+});
+
+test('R27: explicit window and kitchen cabinet keywords map to the requested trades',()=>{
+ for(const [text,trade] of [
+  ['창호','PL창호'],
+  ['거실 창호 손잡이 잠금 불량, 프레임은 이상 없음','PL창호'],
+  ['싱크대 하부장 문이 닫히지 않음','주방가구'],
+  ['주방가구 경첩 파손','주방가구']
+ ])assert.equal(T.classify(text).trade,trade,text);
+ assert.equal(T.classify('창호와 싱크대 하부장 모두 확인').trade,'');
+ assert.equal(T.classify('창호 의심').trade,'');
 });
 test('R23: generic, missing, competing and uncertain clues require review',()=>{
  for(const text of ['침실1 우측 벽 균열','공용욕실 오염','줄눈 탈락','문틀 틈새','벽지','벽지는 양호, 창짝 개폐 불량과 도배 보수','벽지 또는 페인트 보수','타일 아님, 벽지 들뜸'])assert.equal(T.classify(text).trade,'',text);

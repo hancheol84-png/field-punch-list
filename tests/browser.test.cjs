@@ -28,15 +28,20 @@ before(async () => {
 });
 after(async()=>{await browser?.close();await new Promise(r=>server?.close(r));});
 async function pageFor(t, init, options={}){
-  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,deviceScaleFactor:1,locale:'ko-KR',timezoneId:'Asia/Seoul'});
+  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,deviceScaleFactor:1,locale:'ko-KR',timezoneId:'Asia/Seoul',serviceWorkers:options.cloud?'block':'allow'});
   t.after(()=>context.close());
   if(init) await context.addInitScript(init);
   const page=await context.newPage();
+  if(options.cloud){
+    await context.route('**/cloud-config.js',route=>route.fulfill({contentType:'text/javascript',body:"globalThis.PunchCloudConfig={enabled:true,url:'https://punch-test.supabase.co',publicKey:'sb_publishable_test',loginDomain:'accounts.field-punch-list.invalid'};"}));
+    await context.route('https://punch-test.supabase.co/**',route=>options.cloud.route(route));
+  }
   if(options.clock) await page.clock.install({time:new Date(options.clock)});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   t.after(()=>assert.deepEqual(errors,[]));
   await page.goto(origin+(options.path||"/"));
-  await page.waitForFunction(()=>document.documentElement.dataset.ready==="true");
+  if(options.cloud)await page.locator('#cloudLogin').waitFor({state:'visible'});
+  else await page.waitForFunction(()=>document.documentElement.dataset.ready==="true");
   return page;
 }
 test('R2: 390px layout fits and focused input keeps add action in view',async t=>{
@@ -54,6 +59,66 @@ test('R2: 390px layout fits and focused input keeps add action in view',async t=
 async function selectUnit(page,unit='1503'){
   await page.locator('#unitIn').fill(unit);await page.locator('#unitGo').click();
 }
+async function loginAccount(page,id){
+ await page.locator('#cloudLoginId').fill(id);await page.locator('#cloudLoginPassword').fill('p'.repeat(12));await page.locator('#cloudLoginBtn').click();
+ await page.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+}
+test('R31: private screen stays hidden before login; a different account sees no phone records',async t=>{
+ const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();
+ const phone=await pageFor(t,fakeSpeech,{cloud:api});assert.equal(await phone.locator('#appWrap').isVisible(),false);
+ await phone.locator('#cloudLoginId').fill('pilot01');await phone.locator('#cloudLoginPassword').fill('incorrect');await phone.locator('#cloudLoginBtn').click();
+ await phone.locator('#cloudLoginWarn').waitFor({state:'visible'});assert.equal(await phone.locator('#appWrap').isVisible(),false);
+ await loginAccount(phone,'pilot01');await selectUnit(phone);await phone.locator('#micBtn').click();await speak(phone,'거실 창호 손잡이 개폐 불량');await phone.locator('#cloudSyncBtn').click();
+ await phone.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버 저장 완료'));
+ assert.equal(api.states.get(USERS.pilot01).state.rows[0].trade,'PL창호');assert.equal(await phone.locator('#cloudLoginPassword').inputValue(),'');
+ const other=await pageFor(t,null,{cloud:api});await loginAccount(other,'pilot02');assert.equal(await other.locator('.record-row').count(),0);
+ assert.equal(await other.evaluate(()=>localStorage.getItem('punchlist.v2')),null);
+ assert.deepEqual(api.states.get(USERS.pilot02).state.rows,[]);
+});
+test('R31: another device on the same account loads phone records and downloads them without changing server revision',async t=>{
+ const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();const phone=await pageFor(t,null,{cloud:api});await loginAccount(phone,'pilot01');await selectUnit(phone);
+ await phone.locator('#textIn').fill('싱크대 하부장 경첩 조정 필요');await phone.locator('#addBtn').click();await phone.locator('#cloudSyncBtn').click();
+ await phone.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버 저장 완료'));
+ const computer=await pageFor(t,null,{cloud:api});await computer.setViewportSize({width:1280,height:900});await loginAccount(computer,'pilot01');
+ assert.match(await computer.locator('#tb').textContent(),/싱크대 하부장 경첩 조정 필요/);assert.match(await computer.locator('#tb').textContent(),/주방가구/);
+ const revision=api.states.get(USERS.pilot01).revision;
+ const pending=computer.waitForEvent('download');await computer.locator('#downloadBtn').click();const download=await pending;
+ const stream=await download.createReadStream(),chunks=[];for await(const chunk of stream)chunks.push(chunk);
+ const verified=require('node:child_process').execFileSync(process.env.PYTHON_PATH||'python',[path.join(__dirname,'verify_xlsx.py')],{input:Buffer.concat(chunks),encoding:'utf8'});assert.match(verified,/OK/);
+ assert.equal(api.states.get(USERS.pilot01).revision,revision);assert.equal(api.states.get(USERS.pilot01).state.rows[0].downloadRequestedAt,undefined);
+});
+test('R31: offline records survive reload and retry; logout removes only this account cache',async t=>{
+ const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();const phone=await pageFor(t,null,{cloud:api});await loginAccount(phone,'pilot01');await selectUnit(phone);
+ await phone.locator('#cloudSyncBtn').click();await phone.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버 저장 완료'));api.offline=true;
+ await phone.locator('#textIn').fill('욕실 바닥 타일 들뜸');await phone.locator('#addBtn').click();await phone.locator('#cloudSyncBtn').click();
+ await phone.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버에 연결되지'));
+ const raw=await phone.evaluate(uid=>localStorage.getItem('punchlist.cloud.v1.'+uid),USERS.pilot01);assert.equal(JSON.parse(raw)._cloud.pending,true);
+ await phone.locator('#cloudLogoutBtn').click();assert.equal(await phone.locator('#appWrap').isVisible(),true);
+ api.offline=false;await phone.reload();await phone.waitForFunction(()=>document.documentElement.dataset.ready==='true');await phone.locator('#cloudSyncBtn').click();
+ await phone.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버 저장 완료'));assert.equal(api.states.get(USERS.pilot01).state.rows.length,1);
+ await phone.evaluate(()=>localStorage.setItem('punchlist.v2','legacy-records'));
+ await phone.locator('#cloudLogoutBtn').click();await phone.locator('#cloudLogin').waitFor({state:'visible'});
+ assert.equal(await phone.locator('#appWrap').isVisible(),false);assert.equal(await phone.evaluate(uid=>localStorage.getItem('punchlist.cloud.v1.'+uid),USERS.pilot01),null);
+ assert.equal(await phone.evaluate(()=>localStorage.getItem('punchlist.v2')),'legacy-records');
+ await loginAccount(phone,'pilot02');assert.equal(await phone.locator('.record-row').count(),0);
+ assert.equal(await phone.evaluate(uid=>localStorage.getItem('punchlist.cloud.v1.'+uid),USERS.pilot01),null);
+});
+
+test('R31: an unsupported account cache is preserved and never uploaded as empty records',async t=>{
+ const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();
+ const phone=await pageFor(t,()=>localStorage.setItem('punchlist.cloud.v1.afafafaf-afaf-4faf-8faf-afafafafafaf','{"version":99,"rows":[]}'),{cloud:api});
+ await loginAccount(phone,'pilot01');assert.match(await phone.locator('#storageWarn').textContent(),/읽을 수 없습니다/);
+ assert.equal(await phone.evaluate(()=>localStorage.getItem('punchlist.cloud.v1.afafafaf-afaf-4faf-8faf-afafafafafaf')),'{"version":99,"rows":[]}');
+ assert.equal(api.states.get(USERS.pilot01).revision,0);
+});
+test('R31: stale device edits stop with local export available and cannot overwrite the other device',async t=>{
+ const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();const phone=await pageFor(t,null,{cloud:api});await loginAccount(phone,'pilot01');await selectUnit(phone);await phone.locator('#cloudSyncBtn').click();
+ await phone.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버 저장 완료'));
+ const account=api.states.get(USERS.pilot01);account.state.rows=[{id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',dong:'101',unit:'1503',text:'다른 기기 입력',createdAt:new Date().toISOString()}];account.revision++;
+ await phone.locator('#textIn').fill('이 기기의 미전송 입력');await phone.locator('#addBtn').click();await phone.locator('#cloudSyncBtn').click();await phone.locator('#editGuard').waitFor({state:'visible'});
+ assert.equal(account.state.rows[0].text,'다른 기기 입력');assert.equal(account.state.rows.length,1);assert.equal(await phone.locator('#addBtn').isDisabled(),true);assert.equal(await phone.locator('#downloadBtn').isDisabled(),false);
+ assert.match(await phone.locator('#tb').textContent(),/이 기기의 미전송 입력/);
+});
 test('R3: missing unit preserves draft and reload; IME Enter cannot submit',async t=>{
   const page=await pageFor(t);
   await page.locator('#textIn').fill('벽면 보수');await page.locator('#addBtn').click();

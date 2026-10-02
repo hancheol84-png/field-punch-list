@@ -7,6 +7,9 @@
 <title>현장 펀치리스트</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
+<script src="./cloud-config.js"></script>
+<script src="./cloud.js"></script>
+<script>if(globalThis.PunchCloudConfig?.enabled)document.documentElement.dataset.cloud="on";</script>
 <style>
   :root{
     --bg:#EEF1F5; --card:#FFFFFF; --ink:#111A22; --ink2:#48555F; --ink3:#7C8894;
@@ -99,6 +102,8 @@
   .action-slot{min-height:64px}
   textarea{scroll-margin-bottom:100px}
   [hidden]{display:none!important}
+  html[data-cloud="on"] #appWrap:not([data-account-ready="true"]){display:none}
+  #cloudLogin{max-width:480px;margin:24px auto;padding:20px}
   dialog{width:min(92vw,480px);max-height:85dvh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--card);color:var(--ink)}
   dialog::backdrop{background:rgba(0,0,0,.45)}
   dialog h2{font-size:20px;margin:0 0 12px}dialog .row{margin-top:16px}dialog label{margin-top:12px}
@@ -143,10 +148,25 @@
 </head>
 <body>
 
+<section id="cloudLogin" class="card" hidden>
+  <h2>현장 펀치리스트 로그인</h2><p class="note">발급받은 아이디로 로그인하면 자신의 기록만 사용할 수 있습니다.</p>
+  <form id="cloudLoginForm">
+    <label class="f" for="cloudLoginId">아이디</label><input id="cloudLoginId" autocomplete="username" autocapitalize="none" required maxlength="32">
+    <label class="f" for="cloudLoginPassword" style="margin-top:12px">비밀번호</label><input id="cloudLoginPassword" type="password" autocomplete="current-password" required>
+    <button id="cloudLoginBtn" class="btn pri" type="submit" style="margin-top:12px">로그인</button>
+  </form>
+  <p id="cloudLoginWarn" class="bad" role="alert" hidden></p>
+  <button id="cloudReloginBtn" class="btn" data-view="true" hidden>다시 로그인</button>
+</section>
+
 <div id="restoreNotice" class="good" role="status" hidden style="position:sticky;top:0;z-index:21"><span id="restoreMessage"></span> <button id="restoreBtn" class="btn">삭제 되돌리기</button></div>
 <div id="editGuard" class="bad" role="status" hidden><span id="editGuardText"></span> <button id="reloadGuard" class="btn">이 창 새로고침</button></div>
 <div id="storageWarn" class="bad" role="alert" hidden style="position:sticky;top:0;z-index:20"></div>
-<div class="wrap">
+<div class="wrap" id="appWrap">
+  <div id="cloudAccount" class="card" hidden>
+    <strong id="cloudAccountId"></strong><p id="cloudSyncText" class="note" role="status" aria-live="polite"></p>
+    <div class="row"><button id="cloudSyncBtn" class="btn sm" data-view="true">서버 저장 다시 시도</button><button id="cloudRefreshBtn" class="btn sm" data-view="true">최신 기록 불러오기</button><button id="cloudLogoutBtn" class="btn sm" data-view="true">로그아웃</button></div>
+  </div>
   <div id="storageRecovery" class="card" hidden><p>기존 저장 데이터를 덮어쓰지 않았습니다. 원본을 받은 뒤 브라우저의 사이트 데이터 설정에서 이 앱 저장소를 정리할 수 있습니다. 현재 입력한 기록은 먼저 엑셀로 받아 주세요.</p><button id="rawDownloadBtn" class="btn">읽지 못한 원본 JSON 받기</button></div>
   <div id="updateNotice" class="good" hidden><span id="updateText">새 버전이 준비되었습니다.</span> <button class="btn" id="updateBtn">저장 후 새로고침</button></div>
   <p id="offlineNotice" class="note" role="status"></p>
@@ -174,7 +194,7 @@
     <p class="note">목록은 현재 세대부터 보여 줍니다. 전체를 누르면 세대별로 접어 볼 수 있으며 한 번에 한 세대를 펼칩니다. 검색·공종 선택·공종 확인필요만 보기는 화면 조회에만 적용됩니다. 세대 이동 후에도 검색 조건이 남으므로 검색 초기화로 전체 내용을 확인하세요. 엑셀 받기·복사·전체 비우기는 항상 전체 기록에 적용됩니다.</p>
     <p class="note">동을 바꾸면 호수를 다시 정합니다. 작성 중인 내용이 있으면 세대 이동 전에 처리 방법을 선택하세요. 같은 브라우저에서는 한 창에서만 편집합니다. 다른 창이 읽기 전용이면 편집 중인 창을 닫고 새로고침하세요.</p>
     <p class="note">아이폰은 직접 입력 칸의 자판 마이크를 권장합니다. 브라우저 음성 인식은 음성을 서비스 제공자의 서버로 보낼 수 있으며 인터넷이 필요할 수 있습니다. 이 앱은 녹음 파일을 저장하지 않습니다.</p>
-    <p class="note">기록은 이 기기·이 브라우저에만 남고 다른 기기와 공유되지 않습니다. 브라우저 데이터 삭제·비공개 모드·장기간 미사용으로 없어질 수 있으니 매일 엑셀로 받아 두세요. Safari 탭과 홈 화면 앱 사이에 기록이 공유되지 않을 수 있습니다.</p>
+    <p id="recordStorageHelp" class="note">기록은 이 기기·이 브라우저에만 남고 다른 기기와 공유되지 않습니다. 브라우저 데이터 삭제·비공개 모드·장기간 미사용으로 없어질 수 있으니 매일 엑셀로 받아 두세요. Safari 탭과 홈 화면 앱 사이에 기록이 공유되지 않을 수 있습니다.</p>
   </details>
   <!-- 음성 -->
   <div class="card">
@@ -261,7 +281,7 @@
   </div>
 
   <div id="copyFallback" class="card" hidden><p role="alert">자동 복사에 실패했습니다. 아래 내용을 길게 눌러 전체 선택·복사한 뒤 엑셀에 붙여넣으세요.</p><textarea id="copyText" readonly aria-label="직접 복사할 표"></textarea></div>
-  <p class="note">기록은 입력 후 7일이 지나면 다음 실행·복귀 때 삭제됩니다. 내려받은 엑셀은 삭제되지 않습니다. “받기 요청”은 실제 파일 저장 완료를 보장하지 않으니 파일을 확인하세요. Safari는 장기간 미사용 등 브라우저 정책에 따라 기록이 더 일찍 없어질 수 있습니다.</p>
+  <p id="retentionHelp" class="note">기록은 입력 후 7일이 지나면 다음 실행·복귀 때 삭제됩니다. 내려받은 엑셀은 삭제되지 않습니다. “받기 요청”은 실제 파일 저장 완료를 보장하지 않으니 파일을 확인하세요. Safari는 장기간 미사용 등 브라우저 정책에 따라 기록이 더 일찍 없어질 수 있습니다.</p>
   <div class="card"><details id="speechSetup"><summary>확인한 보정 표현</summary>
     <p class="note">처음에는 입력한 문장을 그대로 등록합니다. 항목의 보정 제안에서 ‘다음에도 자동 보정’을 선택한 단어만 이 기기에 기억합니다. 기억을 지워도 이미 작성한 내용은 바뀌지 않습니다.</p>
     <div id="speechRuleList"></div>
@@ -288,7 +308,7 @@
     </details>
   </div>
 
-  <p class="note">앱 버전 2026.10.02.3 · 한 현장의 입력과 엑셀 받기</p>
+  <p class="note">앱 버전 2026.10.02.4 · 한 현장의 입력과 엑셀 받기</p>
   <!-- 진단 -->
   <div class="card">
     <details>
@@ -339,10 +359,31 @@
 <script>
 (async function(){
   "use strict";
+  var cloud=null,cloudSeed=null,cloudReady=false,cloudBootstrap=null;
+  if(globalThis.PunchCloudConfig?.enabled){
+    $("cloudLogin").hidden=false;
+    try{cloud=PunchCloud.create(PunchCloudConfig,{onSaved:function(result){
+      if(!cloudReady)return;
+      var dates=new Map(result.state.rows.map(function(r){return [r.id,r.createdAt];}));
+      rows.forEach(function(r){if(dates.has(r.id))r.createdAt=dates.get(r.id);});
+      var serverNow=Date.parse(result.serverTime);
+      if(Number.isFinite(serverNow))rows=rows.filter(function(r){return Date.parse(r.createdAt)>serverNow-7*86400000;});
+      save();paintRows();
+    }});}catch(e){$("cloudLoginWarn").hidden=false;$("cloudLoginWarn").textContent=e.message;return;}
+    try{cloudBootstrap=await cloud.bootstrap();}catch(e){$("cloudLoginWarn").hidden=false;$("cloudLoginWarn").textContent=e.message;}
+    if(!cloudBootstrap)cloudBootstrap=await new Promise(function(resolve){
+      $("cloudLoginForm").onsubmit=async function(e){
+        e.preventDefault();$("cloudLoginBtn").disabled=true;$("cloudLoginWarn").hidden=true;
+        try{resolve(await cloud.login($("cloudLoginId").value,$("cloudLoginPassword").value));}
+        catch(error){$("cloudLoginWarn").hidden=false;$("cloudLoginWarn").textContent=error.message;}
+        finally{$("cloudLoginPassword").value="";$("cloudLoginBtn").disabled=false;}
+      };
+    });
+  }
   var hasEditLock = false, staleStorage = false, lastStoredRaw = null;
   if(navigator.locks){
     await new Promise(function(resolve){
-      navigator.locks.request("field-punch-list-editor", {ifAvailable:true}, function(lock){
+      navigator.locks.request("field-punch-list-editor"+(cloud?":"+cloud.user.id:""), {ifAvailable:true}, function(lock){
         hasEditLock = !!lock; resolve();
         if(lock) return new Promise(function(){}); // Released by the browser when this document closes.
       }).catch(function(){resolve();});
@@ -361,7 +402,15 @@
     if(staleStorage && !confirm("이 창의 내용을 엑셀로 받았나요? 새로고침하면 다른 창에서 저장한 기록을 불러옵니다."))return;
     location.reload();
   };
-  var LS = "punchlist.v2";
+  var LS = cloud ? "punchlist.cloud.v1."+cloud.user.id : "punchlist.v2";
+  if(cloud){
+    try{
+      var cachedRaw=localStorage.getItem(LS),cached=cachedRaw?JSON.parse(cachedRaw):null;
+      if(cached && (![2,3,4,5].includes(cached.version)||!Array.isArray(cached.rows)))cloudSeed=cachedRaw;
+      else if(cached?._cloud?.userId===cloud.user.id && cached._cloud.pending){cloud.restoreRevision(cached._cloud.revision);cloudSeed=JSON.stringify(cached);}
+      else cloudSeed=JSON.stringify(Object.assign({version:5},cloudBootstrap.state,{current:cached?.current,draft:cached?.draft||""}));
+    }catch(e){cloudSeed=null;}
+  }
   var storageReadWarning = "", storageReadBlocked = false, unreadableRaw = null;
   var DEF = {
     site: "샘플현장",
@@ -383,7 +432,7 @@
   function load(){
     var base = JSON.parse(JSON.stringify(DEF));base.version=5;base.rows=[];
     try{
-      var raw=localStorage.getItem(LS);lastStoredRaw=raw;if(!raw)return base;
+      var raw=localStorage.getItem(LS);lastStoredRaw=raw;if(cloudSeed)raw=cloudSeed;if(!raw)return base;
       unreadableRaw=raw;
       var o=JSON.parse(raw);
       if(!o || ![2,3,4,5].includes(o.version) || !Array.isArray(o.rows))throw Error('format');
@@ -432,8 +481,10 @@
         return false;
       }
       var serialized=JSON.stringify(S);
+      if(cloud){S._cloud=cloud.metadata(S);serialized=JSON.stringify(S);}
       localStorage.setItem(LS, serialized);lastStoredRaw=serialized;
-      $("storageWarn").hidden = true;$("saveState").textContent="이 기기에 저장됨 · 중요한 기록은 엑셀로 받아 두세요.";
+      $("storageWarn").hidden = true;$("saveState").textContent=cloud ? "이 기기에 저장됨 · 서버 저장 상태를 위에서 확인하세요." : "이 기기에 저장됨 · 중요한 기록은 엑셀로 받아 두세요.";
+      if(cloud)cloud.enqueue(S);
       return true;
     }catch(e){
       $("storageWarn").textContent = "이 기기에 저장되지 않았습니다 — 지금 엑셀로 받아 두세요. 입력 중인 내용도 따로 보관해 주세요.";
@@ -575,8 +626,8 @@
       host.appendChild(b);
     });
   }
-  var listScope="current", listQuery="", listTrade="", listNeedsReview=false, groupLimit=20;
-  var openGroup=null, rowLimits=new Map(), rowKeys=new WeakMap(), nextRowKey=0;
+  var listScope=cloud&&!cur.unit?"all":"current", listQuery="", listTrade="", listNeedsReview=false, groupLimit=20;
+  var openGroup=cloud&&!cur.unit&&rows.length?groupKey(rows[rows.length-1]):null, rowLimits=new Map(), rowKeys=new WeakMap(), nextRowKey=0;
   function groupKey(r){return JSON.stringify([r.dong,r.unit]);}
   function focusKey(el,key){el.dataset.focusKey=key;return el;}
   function resetListPages(){rowLimits.clear();groupLimit=20;}
@@ -919,6 +970,7 @@
     }
     $("inputWarn").hidden = true;
     var entry={tradeMode:cur.tradeMode,tradeReason:"직접 선택",createdAt:new Date().toISOString(),dong:cur.dong,core:coreOf(cur.unit),unit:cur.unit,spot:cur.spot,trade:cur.trade,text:text.trim()};
+    if(cloud)entry.id=crypto.randomUUID();
     updateAutoTrade(entry);
     if(origin){entry.inputText=origin.text;entry.inputKind=origin.kind;entry.correctionLog=origin.log;}
     rows.push(entry);
@@ -1217,6 +1269,7 @@
   };
   function networkNotice(){
     $("offlineNotice").textContent = navigator.onLine ? "오프라인 준비 중…" : "오프라인 — 입력·엑셀 받기는 가능하며 음성은 제한될 수 있습니다.";
+    if(cloud){$("offlineNotice").textContent=navigator.onLine ? "계정별 서버 저장 · 저장 완료 후 다른 기기에서 조회 가능" : "오프라인 · 현재 화면의 입력은 이 기기에 보관하며 서버 저장과 다시 로그인은 인터넷 연결이 필요합니다.";return;}
     if(navigator.onLine && navigator.serviceWorker && navigator.serviceWorker.controller) $("offlineNotice").textContent="오프라인 준비 완료 · 이 기기에서 입력·엑셀 받기 가능";
   }
   window.addEventListener("online",networkNotice);window.addEventListener("offline",networkNotice);networkNotice();
@@ -1231,6 +1284,40 @@
     });
   }else $("offlineNotice").textContent="이 브라우저에서는 오프라인 준비를 지원하지 않습니다.";
   paintAll();
+  if(cloud){
+    cloudReady=true;$("cloudLogin").hidden=true;$("appWrap").dataset.accountReady="true";$("cloudAccount").hidden=false;
+    $("cloudAccountId").textContent="로그인 · "+cloud.user.loginId;
+    $("appWrap").querySelector('.sub').textContent="동·호수를 정하고 입력한 뒤 서버 저장 완료를 확인하세요. 같은 계정으로 PC에서 엑셀을 받을 수 있습니다.";
+    $("recordStorageHelp").textContent="자신의 계정 기록과 현장 설정을 서버에 저장합니다. 다른 사용자의 기록은 조회할 수 없습니다. 초안·현재 입력할 동·호수·파일 받기 요청 표시는 각 기기에만 남습니다. 서버 저장 완료를 확인한 뒤 다른 기기에서 최신 기록 불러오기를 사용하세요. 기존 로그인 없는 기록은 이 계정에 자동으로 섞지 않습니다.";
+    $("retentionHelp").textContent="계정 기록은 최초 입력 후 7일 동안 보관합니다. 만료 기록은 서버에서 주기적으로 정리하며 조회·저장 때도 제외합니다. 무료 서버가 일시 중지되면 정리도 멈추고 재개 후 처리합니다. 내려받은 엑셀은 삭제되지 않습니다. ‘받기 요청’은 실제 파일 저장 완료를 보장하지 않으니 파일을 확인하세요. 미전송 기록과 초안은 브라우저 데이터 삭제 등으로 사라질 수 있습니다.";
+    function cloudState(event){
+      var labels={synced:"서버 저장 완료 · 같은 계정으로 PC에서 조회 가능",pending:"이 기기에 저장됨 · 서버 전송 대기",syncing:"서버에 저장 중…",error:"서버 저장 실패 · 이 기기에서 보관 중",conflict:"서버 기록이 바뀜 · 덮어쓰기를 멈췄습니다",expired:"로그인 확인 필요 · 저장을 멈췄습니다",signedout:"로그아웃됨"};
+      $("cloudSyncText").textContent=labels[event.status]||(event.error?.message||"로그인 확인 중");
+      if(event.status==='conflict'||event.status==='expired'){
+        staleStorage=true;stopMic();protectEditor(event.error.message);
+        if(event.status==='expired'){$("appWrap").dataset.accountReady="false";$("cloudLogin").hidden=false;$("cloudLoginForm").hidden=true;$("cloudReloginBtn").hidden=false;$("cloudLoginWarn").hidden=false;$("cloudLoginWarn").textContent="로그인 확인이 필요합니다. 다시 로그인하세요. 미전송 기록은 이 계정의 기기 저장소에 보관했습니다.";}
+      }
+    }
+    cloud.subscribe(cloudState);cloudState({status:'synced'});
+    $("cloudReloginBtn").onclick=function(){location.reload();};
+    $("cloudSyncBtn").onclick=function(){cloud.flush().catch(function(e){$("cloudSyncText").textContent=e.message;});};
+    $("cloudRefreshBtn").onclick=function(){
+      if(staleStorage){
+        if(!confirm("이 기기의 미전송 기록은 엑셀로 받고 초안은 따로 보관했나요? 확인하면 이 계정의 기기 기록과 초안을 비우고 서버 기록을 새로 불러옵니다."))return;
+        localStorage.removeItem(LS);location.reload();return;
+      }
+      if(cloud.pending()){$("cloudSyncText").textContent="미전송 기록을 먼저 서버에 저장하거나 엑셀로 보관하세요.";return;}
+      if(!save())return;stopMic();location.reload();
+    };
+    $("cloudLogoutBtn").onclick=async function(){
+      try{
+        if($("textIn").value.trim()){$("cloudSyncText").textContent="작성 중인 초안을 등록하거나 비운 뒤 로그아웃하세요.";return;}
+        await cloud.logout();stopMic();localStorage.removeItem(LS);location.reload();
+      }catch(e){$("cloudSyncText").textContent=e.message;}
+    };
+    window.addEventListener('online',function(){cloud.flush().catch(function(){});});
+    if(hasEditLock&&!storageReadBlocked)save();
+  }
   fitContext();
   maintainRetention();
   if(!hasEditLock)protectEditor(navigator.locks ? "다른 창에서 편집 중입니다. 이 창은 읽기 전용입니다. 편집 중인 창을 닫은 뒤 새로고침하세요." : "이 브라우저는 안전한 저장 보호를 지원하지 않습니다. 최신 브라우저로 열어 주세요. 현재 기록은 엑셀로 받을 수 있습니다.");

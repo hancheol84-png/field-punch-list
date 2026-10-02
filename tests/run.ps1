@@ -1,7 +1,9 @@
 param(
   [string]$NodeModules = $env:NODE_PATH,
   [string]$ChromePath = $env:CHROME_PATH,
-  [string]$PythonPath = $env:PYTHON_PATH
+  [string]$PythonPath = $env:PYTHON_PATH,
+  [string]$TestNamePattern = '',
+  [switch]$DatabaseTests
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
@@ -27,7 +29,15 @@ try {
   if (-not $taskReady) { throw 'Test Chrome did not start.' }
   Push-Location $taskRoot
   try {
-    node --test tests/public.test.cjs tests/export.test.cjs tests/speech.test.cjs tests/trade.test.cjs tests/browser.test.cjs
+    $taskTestArgs = @('--test')
+    if ($TestNamePattern) { $taskTestArgs += @('--test-name-pattern',$TestNamePattern) }
+    $taskTestArgs += @('tests/public.test.cjs','tests/export.test.cjs','tests/speech.test.cjs','tests/trade.test.cjs','tests/cloud.test.cjs','tests/browser.test.cjs')
+    if ($DatabaseTests) {
+      $taskCloudModules = Join-Path $taskRoot '.test-output\cloud-tools\node_modules'
+      $env:NODE_PATH = "$env:NODE_PATH;$taskCloudModules"
+      $taskTestArgs += 'tests/account-db.test.cjs'
+    }
+    node @taskTestArgs
     $taskTestExit = $LASTEXITCODE
   } finally { Pop-Location }
 } finally {

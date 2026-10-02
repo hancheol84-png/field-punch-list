@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {PGlite}=require('@electric-sql/pglite');
 let db;
-const A='11111111-1111-4111-8111-111111111111',B='22222222-2222-4222-8222-222222222222',C='33333333-3333-4333-8333-333333333333';
+const A='afafafaf-afaf-4faf-8faf-afafafafafaf',B='bfbfbfbf-bfbf-4fbf-8fbf-bfbfbfbfbfbf',C='cfcfcfcf-cfcf-4fcf-8fcf-cfcfcfcfcfcf';
 const row=(id,text)=>({id,dong:'101',unit:'1503',text,createdAt:new Date().toISOString(),trade:'타일',tradeMode:'auto'});
 before(async()=>{
  db=new PGlite();await db.waitReady;

@@ -20,7 +20,7 @@ function fixture(){
   return respond({state:JSON.parse(JSON.stringify(state)),revision,userId:wrongIdentity?'bfbfbfbf-bfbf-4fbf-8fbf-bfbfbfbfbfbf':UID,serverTime:new Date().toISOString()});
  };
  const cloud=C.create(config,{fetch,sessionStorage});cloud.subscribe(e=>listeners.push(e));
- return {cloud,values,calls,listeners,set offline(v){offline=v;},set revoked(v){revoked=v;},set wrongIdentity(v){wrongIdentity=v;},get state(){return state;},advance(){revision++;},hold(){wait=new Promise(resolve=>{this.release=()=>{wait=null;resolve();};});}};
+ return {cloud,fetch,sessionStorage,values,calls,listeners,set offline(v){offline=v;},set revoked(v){revoked=v;},set wrongIdentity(v){wrongIdentity=v;},get state(){return state;},advance(){revision++;},hold(){wait=new Promise(resolve=>{this.release=()=>{wait=null;resolve();};});}};
 }
 test('R31: managed auth receives password once; credentials are not kept in record storage',async()=>{
  const f=fixture();await f.cloud.login('PILOT01','p'.repeat(12));
@@ -66,4 +66,11 @@ test('R31: revoked sessions stop uploading and clear credentials while pending d
 
 test('R31: a server response for another account is rejected before accepting private records',async()=>{
  const f=fixture();f.wrongIdentity=true;await assert.rejects(()=>f.cloud.login('pilot01','p'.repeat(12)),/서버 응답/);assert.equal(f.cloud.user,null);assert.equal(f.values.size,0);
+});
+
+test('R32: pilot cannot reuse or erase a session from the original app',async()=>{
+ const f=fixture();await f.cloud.login('pilot01','p'.repeat(12));
+ const pilot=C.create(config,{fetch:f.fetch,sessionStorage:f.sessionStorage,sessionNamespace:'pilot'});
+ assert.equal(await pilot.bootstrap(),null);await pilot.login('pilot01','p'.repeat(12));assert.equal(f.values.size,2);
+ await pilot.logout();assert.equal(f.values.size,1);assert.ok(f.values.has('punch.auth.v1:'+config.url));assert.equal(f.cloud.user.id,UID);
 });

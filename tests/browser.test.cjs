@@ -11,6 +11,7 @@ before(async () => {
   server = http.createServer((req,res) => {
     let name = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
     if(name.startsWith('/field-punch-list/'))name=name.slice('/field-punch-list'.length);
+    if(name.endsWith('/'))name+='index.html';
     const file = path.resolve(root,'.'+(name==='/'?'/index.html':name));
     if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
     fs.readFile(file,(err,data) => {
@@ -33,14 +34,15 @@ async function pageFor(t, init, options={}){
   if(init) await context.addInitScript(init);
   const page=await context.newPage();
   if(options.cloud){
-    await context.route('**/cloud-config.js',route=>route.fulfill({contentType:'text/javascript',body:"globalThis.PunchCloudConfig={enabled:true,url:'https://punch-test.supabase.co',publicKey:'sb_publishable_test',loginDomain:'accounts.field-punch-list.invalid'};"}));
+    await context.route(options.path?.includes('/pilot/')?'**/pilot/cloud-config.js':'**/cloud-config.js',route=>route.fulfill({contentType:'text/javascript',body:"globalThis.PunchCloudConfig={enabled:true,url:'https://punch-test.supabase.co',publicKey:'sb_publishable_test',loginDomain:'accounts.field-punch-list.invalid'};"}));
     await context.route('https://punch-test.supabase.co/**',route=>options.cloud.route(route));
   }
   if(options.clock) await page.clock.install({time:new Date(options.clock)});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   t.after(()=>assert.deepEqual(errors,[]));
   await page.goto(origin+(options.path||"/"));
-  if(options.cloud)await page.locator('#cloudLogin').waitFor({state:'visible'});
+  if(options.pilotSetup)await page.locator('#cloudLoginWarn').waitFor({state:'visible'});
+  else if(options.cloud)await page.locator('#cloudLogin').waitFor({state:'visible'});
   else await page.waitForFunction(()=>document.documentElement.dataset.ready==="true");
   return page;
 }
@@ -63,6 +65,41 @@ async function loginAccount(page,id){
  await page.locator('#cloudLoginId').fill(id);await page.locator('#cloudLoginPassword').fill('p'.repeat(12));await page.locator('#cloudLoginBtn').click();
  await page.waitForFunction(()=>document.documentElement.dataset.ready==='true');
 }
+
+test('R32: pilot stays private when cloud settings are disabled or fail to load',async t=>{
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2','{"version":5,"rows":[]}'),{path:'/field-punch-list/pilot/',pilotSetup:true});
+ assert.equal(await page.locator('#appWrap').isVisible(),false);assert.equal(await page.locator('#cloudLoginForm').isVisible(),false);
+ assert.match(await page.locator('#cloudLoginWarn').textContent(),/준비 중/);
+ const raw=await page.evaluate(()=>localStorage.getItem('punchlist.v2'));
+ await page.context().route('**/pilot/cloud-config.js',route=>route.abort());await page.reload();await page.locator('#cloudLoginWarn').waitFor({state:'visible'});
+ assert.equal(await page.locator('#appWrap').isVisible(),false);assert.equal(await page.evaluate(()=>localStorage.getItem('punchlist.v2')),raw);
+});
+
+test('R32: pilot records and session stay separate while the original app remains editable',async t=>{
+ const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();
+ const page=await pageFor(t,()=>localStorage.setItem('punchlist.v2',JSON.stringify({version:5,rows:[{dong:'101',unit:'1503',text:'기존 기기 기록',createdAt:new Date().toISOString()}],current:{dong:'101',unit:'1503',spot:'',trade:'',tradeMode:'auto'}})),{path:'/field-punch-list/pilot/',cloud:api});
+ fs.mkdirSync(path.join(root,'.test-output'),{recursive:true});await page.screenshot({path:path.join(root,'.test-output/pilot-login.png')});
+ await loginAccount(page,'pilot01');assert.equal(await page.locator('.record-row').count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);
+ await selectUnit(page);await page.locator('#textIn').fill('창호 손잡이 개폐 불량');await page.locator('#addBtn').click();await page.locator('#cloudSyncBtn').click();
+ await page.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버 저장 완료'));
+ const values=await page.evaluate(uid=>({pilot:localStorage.getItem('punchlist.pilot.cloud.v1.'+uid),mainAccount:localStorage.getItem('punchlist.cloud.v1.'+uid),session:Object.keys(sessionStorage)}),USERS.pilot01);
+ assert.match(values.pilot,/창호 손잡이/);assert.equal(values.mainAccount,null);assert.ok(values.session.includes('punch.auth.v1:pilot:https://punch-test.supabase.co'));
+ const main=await page.context().newPage();await main.goto(origin+'/field-punch-list/');await main.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+ assert.match(await main.locator('#tb').textContent(),/기존 기기 기록/);assert.equal(await main.locator('#addBtn').isDisabled(),false);
+ assert.equal(api.states.get(USERS.pilot01).state.rows.length,1);
+});
+
+test('R32: pilot and main offline shells keep separate scopes and caches',async t=>{
+ const main=await pageFor(t,null,{path:'/field-punch-list/'});await main.evaluate(()=>navigator.serviceWorker.ready);await main.waitForFunction(()=>!!navigator.serviceWorker.controller);
+ const pilot=await main.context().newPage();await pilot.goto(origin+'/field-punch-list/pilot/');await pilot.locator('#cloudLoginWarn').waitFor({state:'visible'});
+ await pilot.evaluate(async()=>{await navigator.serviceWorker.register('./sw.js',{scope:'./'});await navigator.serviceWorker.ready;});
+ await pilot.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('/pilot/sw.js'));
+ const keys=await pilot.evaluate(()=>caches.keys());assert.ok(keys.some(key=>key.includes('/field-punch-list/:v26')));assert.ok(keys.some(key=>key.includes('/field-punch-list/pilot/:pilot-v1')));
+ await main.context().setOffline(true);await pilot.reload();await pilot.locator('#cloudLoginWarn').waitFor({state:'visible'});assert.equal(await pilot.locator('#appWrap').isVisible(),false);
+ await main.reload();await main.waitForFunction(()=>document.documentElement.dataset.ready==='true');assert.equal(await main.locator('#appWrap').isVisible(),true);
+ const cached=await pilot.evaluate(async()=>{const result=[];for(const key of await caches.keys())for(const request of await (await caches.open(key)).keys())result.push(request.url);return result;});
+ assert.ok(cached.every(url=>url.startsWith(origin+'/field-punch-list/')));assert.ok(!cached.some(url=>url.includes('/auth/v1/')||url.includes('/rest/v1/')));
+});
 test('R31: private screen stays hidden before login; a different account sees no phone records',async t=>{
  const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();
  const phone=await pageFor(t,fakeSpeech,{cloud:api});assert.equal(await phone.locator('#appWrap').isVisible(),false);

@@ -26,3 +26,11 @@ test('R10: help explains local records, expiry, speech and device verification',
  assert.ok(fs.existsSync(path.join(root,'.nojekyll')));
  assert.match(fs.readFileSync(path.join(root,'index.html'),'utf8'),/30초 사용법/);
 });
+
+test('R32: pilot assets match reviewed sources; manifests and public configuration stay separate',()=>{
+ const expected=require('../scripts/build-pilot.cjs').artifacts();
+ for(const [name,content] of Object.entries(expected))assert.equal(fs.readFileSync(path.join(root,'pilot',name),'utf8'),content,name);
+ const html=expected['index.html'];assert.match(html,/PunchPilotRequired=true/);assert.doesNotMatch(html,/(?:src|href)=["'](?:https?:)?\/\//i);
+ const manifest=JSON.parse(expected['manifest.webmanifest']);assert.equal(manifest.start_url,'./');assert.equal(manifest.scope,'./');assert.equal(manifest.id,'./');assert.match(manifest.name,/시범운영/);
+ const context={};require('node:vm').runInNewContext(fs.readFileSync(path.join(root,'cloud-config.js'),'utf8'),context);assert.equal(context.PunchCloudConfig.enabled,false);assert.equal(context.PunchCloudConfig.url,'');
+});

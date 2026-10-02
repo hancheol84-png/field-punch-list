@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="ko">
 <head>
+<script>globalThis.PunchPilotRequired=true;document.documentElement.dataset.cloud="on";</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F3557">
-<title>현장 펀치리스트</title>
+<title>현장 펀치리스트 · 시범운영</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <script src="./cloud-config.js"></script>
@@ -148,6 +149,7 @@
 </head>
 <body>
 
+<p id="pilotNotice" class="note" style="max-width:480px;margin:16px auto;padding:0 20px">시범운영 · 계정별 서버 저장</p>
 <section id="cloudLogin" class="card" hidden>
   <h2>현장 펀치리스트 로그인</h2><p class="note">발급받은 아이디로 로그인하면 자신의 기록만 사용할 수 있습니다.</p>
   <form id="cloudLoginForm">
@@ -308,7 +310,7 @@
     </details>
   </div>
 
-  <p class="note">앱 버전 2026.10.02.4 · 한 현장의 입력과 엑셀 받기</p>
+  <p class="note">앱 버전 2026.10.02.5 · 시범운영 · 한 현장의 입력과 엑셀 받기</p>
   <!-- 진단 -->
   <div class="card">
     <details>

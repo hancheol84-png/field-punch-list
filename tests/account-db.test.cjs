@@ -66,3 +66,10 @@ test('R30: malformed or duplicated records and caller-selected account fields ar
   await assert.rejects(()=>push(A,state,current.revision));assert.equal((await pull(A)).revision,current.revision);
  }
 });
+
+test('R33: automatic RLS helper cannot be called by clients; own-account RPC remains available',async()=>{
+ await db.exec("create function public.rls_auto_enable() returns void language plpgsql security definer as $$begin null;end$$;");
+ const sql=fs.readFileSync(path.join(__dirname,'../server/rls-helper-access.sql'),'utf8');await db.exec(sql);await db.exec(sql);
+ const flags=(await db.query("select has_function_privilege('anon','public.rls_auto_enable()','execute') as helper_anon,has_function_privilege('authenticated','public.rls_auto_enable()','execute') as helper_signedin,has_function_privilege('authenticated','public.punch_pull()','execute') as app_pull")).rows[0];
+ assert.deepEqual(flags,{helper_anon:false,helper_signedin:false,app_pull:true});
+});

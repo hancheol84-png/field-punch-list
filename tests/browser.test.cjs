@@ -558,6 +558,29 @@ test('R28: six short phone findings switch trades per speech result and preserve
  assert.ok(state.rows.every(row=>row.tradeMode==='auto'));assert.equal(state.current.trade,'');
 });
 
+test('R29: manual trade is visible beside mic; a conflicting record offers auto for future inputs',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);
+ await page.locator('#trades').getByRole('button',{name:'타일',exact:true}).click();
+ assert.match(await page.locator('#micTradeModeText').textContent(),/공종 수동.*타일/);assert.equal(await page.locator('#micTradeAuto').isVisible(),true);
+ await page.locator('#micBtn').click();await speak(page,'욕실 바닥 타일 들뜸');assert.equal(await page.locator('#recentTradeConflict').isVisible(),false);
+ await speak(page,'오염 확인');assert.equal(await page.locator('#recentTradeConflict').isVisible(),false);
+ await speak(page,'거실 피엘 창호 손잡이 개폐 불량');
+ assert.equal(await page.locator('#recentTradeConflict').isVisible(),true);assert.match(await page.locator('#recentTradeConflictText').textContent(),/수동 지정 ‘타일’.*‘PL창호’/);
+ assert.match(await page.locator('#tb').textContent(),/타일 · 수동/);
+ const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows);
+ fs.mkdirSync(path.join(root,'.test-output'),{recursive:true});
+ await page.locator('#recentTradeConflict').scrollIntoViewIfNeeded();await page.waitForFunction(()=>document.querySelector('#ctx').classList.contains('compact'));
+ await page.locator('#recentTradeConflict').screenshot({path:path.join(root,'.test-output/trade-conflict-mobile.png')});
+ await page.locator('#recentTradeAuto').click();assert.match(await page.locator('#micTradeModeText').textContent(),/공종 자동/);assert.equal(await page.locator('#micTradeAuto').isVisible(),false);
+ assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')).rows),before);
+ await speak(page,'주방 싱크대 하부 당 문 닫힌 불량');assert.equal(await page.locator('#recentTradeConflict').isVisible(),false);
+ let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[3].trade,'주방가구');assert.equal(state.rows[3].tradeMode,'auto');assert.equal(state.rows[2].trade,'타일');
+ await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.ready==='true');assert.match(await page.locator('#micTradeModeText').textContent(),/공종 자동/);
+ await page.locator('#trades').getByRole('button',{name:'타일',exact:true}).click();await page.locator('#micTradeAuto').click();
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.current.tradeMode,'auto');assert.equal(state.current.trade,'');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390);
+});
+
 test('R27: voice registration maps explicit window and kitchen cabinet keywords',async t=>{
  const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#tradeAuto').click();await page.locator('#micBtn').click();
  const phrases=['거실 창호 손잡이 잠금 불량 프레임은 이상 없음','싱크대 하부장 문이 닫히지 않음'];

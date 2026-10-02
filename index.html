@@ -183,6 +183,7 @@
       <button class="btn pri wide" id="micBtn">마이크 켜기</button>
       <button class="btn sm" id="undoBtn">최근 등록 삭제</button>
     </div>
+    <div id="micTradeMode" class="good row" style="margin-top:10px" role="status" aria-live="polite"><span id="micTradeModeText" style="flex:1"></span><button id="micTradeAuto" class="btn sm" hidden>공종 자동으로 전환</button></div>
     <div class="heard" id="heard">마이크를 켜고 <b>“침실3”</b>, <b>“골조할석”</b>, <b>“우측벽 상부 턱짐 그라인딩 필요”</b> 처럼 말해 보세요.</div>
     <div id="micWarn"></div>
   </div>
@@ -228,6 +229,7 @@
   </div>
 
   <div id="recentEntry" class="recent" hidden><div class="row" style="justify-content:space-between"><strong>최근 등록</strong><button id="recentEdit" class="btn sm">바로 수정</button></div><p id="recentContext" class="note"></p><p id="recentText"></p><button id="recentReview" class="btn sm" data-view="true" hidden>보정 확인</button></div>
+  <div id="recentTradeConflict" class="bad" role="status" aria-live="polite" hidden><p id="recentTradeConflictText"></p><button id="recentTradeAuto" class="btn sm">다음 입력 자동 분류</button></div>
 
   <!-- 목록 -->
   <div class="card" id="listCard">
@@ -286,7 +288,7 @@
     </details>
   </div>
 
-  <p class="note">앱 버전 2026.10.02.2 · 한 현장의 입력과 엑셀 받기</p>
+  <p class="note">앱 버전 2026.10.02.3 · 한 현장의 입력과 엑셀 받기</p>
   <!-- 진단 -->
   <div class="card">
     <details>
@@ -514,12 +516,18 @@
     chips($("spots"), S.spots, cur.spot, function(v){ cur.spot = (cur.spot===v ? "" : v); save(); paintCtx(); paintSpots(); },
       "＋ 위치", function(){var v=newChoice(S.spots,"위치 이름");if(v){S.spots.push(v);cur.spot=v;save();paintSpots();paintCtx();}});
   }
-  $("tradeAuto").onclick=function(){if(!canEdit())return;cur.tradeMode="auto";cur.trade="";save();paintCtx();paintTrades();};
+  function chooseAutoTrade(){if(!canEdit())return;cur.tradeMode="auto";cur.trade="";save();paintCtx();paintTrades();paintRows();}
+  $("tradeAuto").onclick=chooseAutoTrade;
+  $("micTradeAuto").onclick=chooseAutoTrade;
+  $("recentTradeAuto").onclick=chooseAutoTrade;
   function paintTrades(){
     $("tradeAuto").classList.toggle("on",cur.tradeMode==="auto");$("tradeAuto").setAttribute("aria-pressed",String(cur.tradeMode==="auto"));$("tradeAuto").disabled=!canEdit();
     var modeNote=$("tradeModeNote");
     modeNote.className=cur.tradeMode==="auto" ? "good" : "bad";
     modeNote.textContent=cur.tradeMode==="auto" ? "자동 분류 중 · 각 입력 내용으로 공종을 새로 판단합니다." : "수동 지정 중 · "+(cur.trade||"선택한 공종")+"이 다음 입력에도 적용됩니다. 자동 분류하려면 위 버튼을 누르세요.";
+    $("micTradeMode").className=(cur.tradeMode==="auto" ? "good" : "bad")+" row";
+    $("micTradeModeText").textContent=cur.tradeMode==="auto" ? "공종 자동 · 말한 내용마다 새로 분류합니다." : "공종 수동 · 모든 새 항목에 "+(cur.trade||"선택한 공종")+" 적용";
+    $("micTradeAuto").hidden=cur.tradeMode==="auto";$("micTradeAuto").disabled=!canEdit();
     chips($("trades"), S.trades, cur.trade, function(v){ cur.trade = (cur.tradeMode==="manual" && cur.trade===v ? "" : v);cur.tradeMode=cur.trade ? "manual" : "auto"; save(); paintCtx(); paintTrades(); },
       "＋ 공종", function(){var v=newChoice(S.trades,"공종 이름");if(v){S.trades.push(v);cur.trade=v;cur.tradeMode="manual";save();paintTrades();paintCtx();}});
   }
@@ -579,7 +587,7 @@
   $("listTrade").onchange=function(){listTrade=this.value;resetListPages();paintRows();};
   $("listNeedsReview").onclick=function(){listNeedsReview=!listNeedsReview;resetListPages();paintRows();};
   $("listReset").onclick=function(){listQuery="";listTrade="";listNeedsReview=false;$("listSearch").value="";resetListPages();paintRows();};
-  function tradeLabel(r){return PunchTrade.needsReview(r) ? PunchTrade.REVIEW : r.trade+(r.tradeMode==="auto" ? " · 자동" : "");}
+  function tradeLabel(r){return PunchTrade.needsReview(r) ? PunchTrade.REVIEW : r.trade+(r.tradeMode==="auto" ? " · 자동" : r.tradeMode==="manual" ? " · 수동" : "");}
   function updateAutoTrade(row){if(row.tradeMode==="auto"){var decision=PunchTrade.classify(row.text);row.trade=decision.trade;row.tradeReason=decision.reason;}}
   function recordButton(r){
     var button=document.createElement("button");button.className="record-row";button.dataset.view="true";
@@ -739,6 +747,10 @@
     paintRetention();
     var recent=rows[rows.length-1];$("recentEntry").hidden=!recent;
     if(recent){$("recentContext").textContent=recent.dong+"동 "+recent.unit+"호 · "+(recent.spot||"위치 미지정")+" · "+tradeLabel(recent);$("recentText").textContent=recent.text;}
+    var suggested=recent && recent.tradeMode==="manual" ? PunchTrade.classify(recent.text).trade : "";
+    $("recentTradeConflict").hidden=!suggested || suggested===recent.trade;
+    $("recentTradeConflictText").textContent=suggested && suggested!==recent.trade ? "최근 항목은 수동 지정 ‘"+recent.trade+"’로 저장됐지만 내용 기준은 ‘"+suggested+"’입니다. ‘바로 수정’에서 이 항목의 공종을 확인하세요." : "";
+    $("recentTradeAuto").hidden=cur.tradeMode==="auto";$("recentTradeAuto").disabled=!canEdit();
     $("recentReview").hidden=!recent || (!PunchSpeech.analyze(recent.text).suggestions.length && (recent.inputText===undefined || recent.inputText===recent.text));
     $("recentEdit").disabled=!canEdit();
   }

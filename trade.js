@@ -13,8 +13,9 @@
   ['골조할석',/할석/,/필요|보수|불량|누락/]
  ];
  const explicitTrades=[
-  ['PL창호',/창호/],
-  ['주방가구',/(?:싱크대\s*(?:하부장|상부장)|주방가구)/]
+  ['PL창호',/창\s*호/],
+  // Classifier-only aliases: keep the recognized sentence and measurements intact.
+  ['주방가구',/(?:싱\s*크\s*대\s*(?:하\s*부\s*[장당]|상\s*부\s*[장당])|주\s*방\s*가\s*구)/]
  ];
  const uncertainPattern=/가능성|추정|의심|미확인|불명확|필요할 수도|수도 있|것 같|같음|같아요|듯함|듯하다|듯한|듯해 보|모르겠|일지도|또는|인지|여부/;
  const negatedPattern=/없음|없습니다|없고|없는지|없어서|없으니|없으면|양호|정상|문제없|이상없|불필요|아님|아니라|아닌|아닐|제외|말고/;

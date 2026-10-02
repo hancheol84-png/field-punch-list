@@ -1,7 +1,7 @@
 /* The prefix includes scope so other project sites on the same host are untouched. */
 'use strict';
 const PREFIX='field-punch-list:'+self.registration.scope+':';
-const CACHE=PREFIX+'v23';
+const CACHE=PREFIX+'v24';
 const ASSETS=['./','./index.html','./export.js','./speech.js','./trade.js','./manifest.webmanifest','./icon.svg'];
 const URLS=ASSETS.map(p=>new URL(p,self.registration.scope).href);
 self.addEventListener('install',event=>{

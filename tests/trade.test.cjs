@@ -1,4 +1,20 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),T=require('../trade.js');
+test('R28: short on-device findings and cabinet speech spacing classify without rewriting',()=>{
+ const samples=[
+  ['공용 욕실 바닥 타일 들뜸','타일'],
+  ['거실 피엘 창호 손잡이 개폐 불량','PL창호'],
+  ['주방 싱크대 하부 당 문 닫힌 불량','주방가구'],
+  ['욕실 벽 타일 깨짐','타일'],
+  ['안방 피엘 창호 손잡이 흔들림','PL창호'],
+  ['싱크대 하부장 경첩 조정 필요','주방가구'],
+  ['싱크대 하 부 장 문 닫힘 불량','주방가구'],
+  ['싱크대 상부 당 경첩 조정 필요','주방가구'],
+  ['거실 창 호 손잡이 개폐 불량','PL창호']
+ ];
+ for(const [text,trade] of samples)assert.equal(T.classify(text).trade,trade,text);
+ for(const text of ['안방 붙박이장 하부장 문 닫힘 불량','싱크대 하부 단차','싱크대 하부 당과 타일 들뜸','싱크대 하부 당 고장 의심'])assert.equal(T.classify(text).trade,'',text);
+});
+
 test('R23: clear object and issue rules classify without changing text',()=>{
  for(const [text,trade] of [['침실1 벽지 이음부 들뜸','도배'],['거실 창짝 개폐 불량','PL창호'],['공용욕실 세면대 배수 불량','설비'],['주방 타일 줄눈 탈락','타일'],['페인트 벗겨짐','도장'],['콘센트 전원 불량','전기']])assert.equal(T.classify(text).trade,trade,text);
 });

@@ -548,6 +548,16 @@ test('R23: automatic trade is decided per record, manual choice wins, source tex
  await page.locator('#listNeedsReview').click();assert.equal(await page.locator('.record-row').count(),2);
  await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.ready==='true');assert.equal(await page.locator('#tradeAuto').getAttribute('aria-pressed'),'true');
 });
+test('R28: six short phone findings switch trades per speech result and preserve originals',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#tradeAuto').click();await page.locator('#micBtn').click();
+ const phrases=['공용 욕실 바닥 타일 들뜸','거실 피엘 창호 손잡이 개폐 불량','주방 싱크대 하부 당 문 닫힌 불량','욕실 벽 타일 깨짐','안방 피엘 창호 손잡이 흔들림','싱크대 하부장 경첩 조정 필요'];
+ for(const phrase of phrases)await speak(page,phrase);
+ const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));
+ assert.deepEqual(state.rows.map(row=>row.trade),['타일','PL창호','주방가구','타일','PL창호','주방가구']);
+ assert.deepEqual(state.rows.map(row=>row.text),phrases);assert.deepEqual(state.rows.map(row=>row.inputText),phrases);
+ assert.ok(state.rows.every(row=>row.tradeMode==='auto'));assert.equal(state.current.trade,'');
+});
+
 test('R27: voice registration maps explicit window and kitchen cabinet keywords',async t=>{
  const page=await pageFor(t,fakeSpeech);await selectUnit(page);await page.locator('#tradeAuto').click();await page.locator('#micBtn').click();
  const phrases=['거실 창호 손잡이 잠금 불량 프레임은 이상 없음','싱크대 하부장 문이 닫히지 않음'];

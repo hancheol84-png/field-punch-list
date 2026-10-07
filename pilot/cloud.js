@@ -32,7 +32,7 @@
    try{response=await transport(base+path,{method,headers:{apikey:config.publicKey,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});}catch(e){throw fail('서버에 연결되지 않았습니다. 입력은 이 기기에 남아 있습니다.','network');}
    const data=await response.json().catch(()=>({}));
    if(!response.ok){
-    if(data.code==='40001')throw fail('서버 기록이 바뀌었습니다. 미전송 내용을 보관한 뒤 최신 기록을 불러오세요.','conflict');
+    if(data.code==='PT409'||data.code==='40001')throw fail('서버 기록이 바뀌었습니다. 미전송 내용을 보관한 뒤 최신 기록을 불러오세요.','conflict');
     if(response.status===401||response.status===403||data.code==='42501')throw fail('로그인 또는 계정 사용 권한을 확인하세요.','authentication');
     if(response.status===400&&path.startsWith('/auth/'))throw fail('아이디 또는 비밀번호를 확인하세요.','authentication');
     throw fail(response.status===429?'요청이 많습니다. 잠시 후 다시 시도하세요.':'서버 저장에 실패했습니다. 현재 화면의 기록을 엑셀로 받아 두세요.','server');

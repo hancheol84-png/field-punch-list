@@ -16,7 +16,7 @@ function backend(){
   }else if(url.pathname.includes('/rpc/')){
    const account=states.get(token);
    if(!account)status=401;
-   else if(url.pathname.endsWith('/punch_push')&&body.expected_revision!==account.revision){status=409;data={code:'40001'};}
+   else if(url.pathname.endsWith('/punch_push')&&body.expected_revision!==account.revision){status=409;data={code:'PT409'};}
    else{
     if(url.pathname.endsWith('/punch_push')){account.state=JSON.parse(JSON.stringify(body.new_state));account.revision++;}
     data={userId:token,revision:account.revision,state:account.state,serverTime:new Date().toISOString()};

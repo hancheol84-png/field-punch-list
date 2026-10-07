@@ -95,7 +95,7 @@ test('R32: pilot and main offline shells keep separate scopes and caches',async 
  const pilot=await main.context().newPage();await pilot.goto(origin+'/field-punch-list/pilot/');await pilot.locator('#cloudLoginForm').waitFor({state:'visible'});
  await pilot.evaluate(async()=>{await navigator.serviceWorker.register('./sw.js',{scope:'./'});await navigator.serviceWorker.ready;});
  await pilot.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('/pilot/sw.js'));
- const keys=await pilot.evaluate(()=>caches.keys());assert.ok(keys.some(key=>key.includes('/field-punch-list/:v26')));assert.ok(keys.some(key=>key.includes('/field-punch-list/pilot/:pilot-v1')));
+ const keys=await pilot.evaluate(()=>caches.keys());assert.ok(keys.some(key=>key.includes('/field-punch-list/:v27')));assert.ok(keys.some(key=>key.includes('/field-punch-list/pilot/:pilot-v2')));
  await main.context().setOffline(true);await pilot.reload();await pilot.locator('#cloudLoginForm').waitFor({state:'visible'});assert.equal(await pilot.locator('#appWrap').isVisible(),false);
  await main.reload();await main.waitForFunction(()=>document.documentElement.dataset.ready==='true');assert.equal(await main.locator('#appWrap').isVisible(),true);
  const cached=await pilot.evaluate(async()=>{const result=[];for(const key of await caches.keys())for(const request of await (await caches.open(key)).keys())result.push(request.url);return result;});

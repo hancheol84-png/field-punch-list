@@ -43,10 +43,10 @@ test('R30: anonymous, unregistered and deactivated users cannot fetch or change 
 test('R30: stale PC state cannot overwrite newer phone edits or deletes',async()=>{
  const initial=await pull(B);
  const first=await push(B,{rows:[row('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','휴대폰 기록')]},initial.revision);
- await assert.rejects(()=>push(B,{rows:[]},initial.revision),/Another device/);
+ await assert.rejects(()=>push(B,{rows:[]},initial.revision),e=>e.code==='PT409' && /Another device/.test(e.message));
  assert.equal((await pull(B)).state.rows[0].text,'휴대폰 기록');
  const deleted=await push(B,{rows:[]},first.revision);
- await assert.rejects(()=>push(B,first.state,first.revision),/Another device/);
+ await assert.rejects(()=>push(B,first.state,first.revision),e=>e.code==='PT409' && /Another device/.test(e.message));
  assert.deepEqual((await pull(B)).state.rows,[]);assert.ok(deleted.revision>first.revision);
 });
 test('R30: seven-day boundary is enforced on server, edits cannot extend first input time',async()=>{
@@ -72,4 +72,16 @@ test('R33: automatic RLS helper cannot be called by clients; own-account RPC rem
  const sql=fs.readFileSync(path.join(__dirname,'../server/rls-helper-access.sql'),'utf8');await db.exec(sql);await db.exec(sql);
  const flags=(await db.query("select has_function_privilege('anon','public.rls_auto_enable()','execute') as helper_anon,has_function_privilege('authenticated','public.rls_auto_enable()','execute') as helper_signedin,has_function_privilege('authenticated','public.punch_pull()','execute') as app_pull")).rows[0];
  assert.deepEqual(flags,{helper_anon:false,helper_signedin:false,app_pull:true});
+});
+
+test('R34: upgrading the conflict response preserves records and RPC permissions',async()=>{
+ const before=(await db.query('select user_id,revision,state from punch_private.accounts order by user_id')).rows;
+ const old=(await db.query("select pg_get_functiondef('public.punch_push(jsonb,bigint)'::regprocedure) as body")).rows[0].body.replace("errcode='PT409'","errcode='40001'");
+ await db.exec(old);
+ const patch=fs.readFileSync(path.join(__dirname,'../server/conflict-http.sql'),'utf8');
+ await db.exec(patch);await db.exec(patch);
+ await assert.rejects(()=>push(A,{rows:[]},-1),e=>e.code==='PT409');
+ assert.deepEqual((await db.query('select user_id,revision,state from punch_private.accounts order by user_id')).rows,before);
+ const rights=(await db.query("select has_function_privilege('anon','public.punch_push(jsonb,bigint)','execute') as anon_push,has_function_privilege('authenticated','public.punch_push(jsonb,bigint)','execute') as signedin_push")).rows[0];
+ assert.deepEqual(rights,{anon_push:false,signedin_push:true});
 });

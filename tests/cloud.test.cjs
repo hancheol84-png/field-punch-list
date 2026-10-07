@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),C=require('../cloud.js');
 const config={url:'https://punch-test.supabase.co',publicKey:'sb_publishable_test',loginDomain:'accounts.field-punch-list.invalid'};
 const UID='afafafaf-afaf-4faf-8faf-afafafafafaf';
-function fixture(){
+function fixture(conflictCode='PT409'){
  const values=new Map(),calls=[],listeners=[];let revision=0,state={rows:[]},offline=false,wait=null,revoked=false,wrongIdentity=false;
  const sessionStorage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
  const respond=(data,status=200)=>({ok:status<400,status,json:async()=>data});
@@ -14,7 +14,7 @@ function fixture(){
   if(url.includes('/logout'))return respond({});
   if(url.endsWith('/punch_push')){
    if(wait)await wait;
-   if(body.expected_revision!==revision)return respond({code:'40001'},409);
+   if(body.expected_revision!==revision)return respond({code:conflictCode},409);
    state=JSON.parse(JSON.stringify(body.new_state));revision++;
   }
   return respond({state:JSON.parse(JSON.stringify(state)),revision,userId:wrongIdentity?'bfbfbfbf-bfbf-4fbf-8fbf-bfbfbfbfbfbf':UID,serverTime:new Date().toISOString()});
@@ -53,6 +53,16 @@ test('R31: a stale version stops instead of overwriting another device',async()=
  const f=fixture();await f.cloud.login('pilot01','p'.repeat(12));f.advance();f.cloud.enqueue({rows:[{text:'미전송'}]});
  await assert.rejects(()=>f.cloud.flush(),/서버 기록이 바뀌/);assert.equal(f.cloud.status,'conflict');assert.equal(f.cloud.pending(),true);assert.deepEqual(f.state.rows,[]);
  await assert.rejects(()=>f.cloud.flush(),/동기화를 멈췄/);
+});
+
+for(const code of ['PT409','40001'])test('R34: '+code+' preserves pending input and never retries a stale snapshot',async()=>{
+ const f=fixture(code);await f.cloud.login('pilot01','p'.repeat(12));f.advance();
+ f.cloud.enqueue({rows:[{text:'미전송 기록'}]});
+ await assert.rejects(()=>f.cloud.flush(),e=>e.kind==='conflict');
+ const count=()=>f.calls.filter(c=>c.url.endsWith('/punch_push')).length;
+ assert.equal(count(),1);assert.equal(f.cloud.pending(),true);assert.deepEqual(f.state.rows,[]);
+ f.cloud.enqueue({rows:[{text:'수정한 미전송 기록'}]});
+ await assert.rejects(()=>f.cloud.flush(),e=>e.kind==='conflict');assert.equal(count(),1);
 });
 test('R31: configuration rejects admin keys and insecure or unrelated endpoints',()=>{
  for(const changes of [{publicKey:'sb_secret_example'},{url:'http://punch-test.supabase.co'},{url:'https://unrelated.example'}])assert.throws(()=>C.validateConfig({...config,...changes}));

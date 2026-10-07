@@ -125,7 +125,8 @@ begin
  insert into punch_private.accounts(user_id) values(uid) on conflict do nothing;
  select * into account from punch_private.accounts a where a.user_id=uid for update;
  if expected_revision is null or expected_revision<>account.revision then
-  raise exception 'Another device changed these records' using errcode='40001';
+  -- Application version conflicts must not trigger PostgREST transaction retries.
+  raise exception 'Another device changed these records' using errcode='PT409';
  end if;
  cleaned:=punch_private.validate_state(new_state,account.state);
  update punch_private.accounts set state=cleaned, revision=revision+1, updated_at=now() where user_id=uid returning * into account;

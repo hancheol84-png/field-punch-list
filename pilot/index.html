@@ -413,7 +413,7 @@
   if(cloud){
     try{
       var cachedRaw=localStorage.getItem(LS),cached=cachedRaw?JSON.parse(cachedRaw):null;
-      if(cached && (![2,3,4,5].includes(cached.version)||!Array.isArray(cached.rows)))cloudSeed=cachedRaw;
+      if(cached && (![2,3,4,5,6].includes(cached.version)||!Array.isArray(cached.rows)))cloudSeed=cachedRaw;
       else if(cached?._cloud?.userId===cloud.user.id && cached._cloud.pending){cloud.restoreRevision(cached._cloud.revision);cloudSeed=JSON.stringify(cached);}
       else cloudSeed=JSON.stringify(Object.assign({version:5},cloudBootstrap.state,{current:cached?.current,draft:cached?.draft||""}));
     }catch(e){cloudSeed=null;}
@@ -425,7 +425,7 @@
     dongs: ["101", "102", "103"],
     cores: "1코어=01,02; 2코어=03,04",
     spots: ["현관","거실","주방","침실1","침실2","침실3","드레스룸","팬트리룸","부부욕실","공용욕실","대피공간","발코니1","발코니2","실외기실","복도","계단실창"],
-    trades: ["골조할석","골조미장","골조견출","석고","경량석고","합지","CRC","방수","타일","PL창호","주방가구","도배","설비"],
+    trades: ["미장","내장","골조할석","골조미장","골조견출","석고","경량석고","합지","CRC","방수","타일","PL창호","주방가구","도배","설비"],
     phrases: ["본틀 옆 견출 보수","가틀 옆 골조벽 단차 할/G","가틀 옆 골조벽 단차 미장","현관 문틀 주변 전체 틈새(즉시 처리)","대피공간 문틀 주변 전체 틈새(즉시 처리)","붙박이장 틈새 보수","주방가구 날개벽 틈새","계단실 AL창호 개구부 하부 미장","대피창 주위 핀홀 보수"]
   };
   var S = load();
@@ -437,12 +437,12 @@
 
   function $(id){ return document.getElementById(id); }
   function load(){
-    var base = JSON.parse(JSON.stringify(DEF));base.version=5;base.rows=[];
+    var base = JSON.parse(JSON.stringify(DEF));base.version=6;base.rows=[];
     try{
       var raw=localStorage.getItem(LS);lastStoredRaw=raw;if(cloudSeed)raw=cloudSeed;if(!raw)return base;
       unreadableRaw=raw;
       var o=JSON.parse(raw);
-      if(!o || ![2,3,4,5].includes(o.version) || !Array.isArray(o.rows))throw Error('format');
+      if(!o || ![2,3,4,5,6].includes(o.version) || !Array.isArray(o.rows))throw Error('format');
       ['site','inspector','cores','draft'].forEach(function(k){if(o[k]!==undefined){if(typeof o[k]!=='string')throw Error('format');base[k]=o[k];}});
       ['dongs','spots','trades','phrases'].forEach(function(k){
         if(o[k]!==undefined){if(!Array.isArray(o[k]) || !o[k].every(function(v){return typeof v==='string' && v.trim();}) || (k==='dongs'&&!o[k].length))throw Error('format');base[k]=o[k];}
@@ -450,6 +450,7 @@
       if(o.version<5){
         base.trades=Array.from(new Set(base.trades.map(function(v){return v==='창호'?'PL창호':v;}).concat(['PL창호','주방가구'])));
       }
+      if(o.version<6)base.trades=Array.from(new Set(base.trades.concat(['미장','내장'])));
       o.rows.forEach(function(r){
         if(!r || typeof r!=='object' || !['dong','unit','text'].every(function(k){return typeof r[k]==='string';}))throw Error('format');
         ['core','spot','trade','createdAt','downloadRequestedAt','inputText','inputKind','tradeReason'].forEach(function(k){if(r[k]!==undefined && typeof r[k]!=='string')throw Error('format');});
@@ -470,13 +471,13 @@
     }catch(e){
       storageReadWarning='저장 형식을 읽을 수 없습니다. 기존 데이터를 보존하기 위해 저장을 중지했습니다 — 새로 입력한 기록은 엑셀로 받아 주세요.';
       storageReadBlocked=true;
-      base=JSON.parse(JSON.stringify(DEF));base.version=5;base.rows=[];return base;
+      base=JSON.parse(JSON.stringify(DEF));base.version=6;base.rows=[];return base;
     }
   }
   function save(){
     if(!canEdit()){$("saveState").textContent="읽기 전용 · 이 창에서는 저장하지 않습니다.";return false;}
     if(storageReadBlocked){$("storageWarn").textContent=storageReadWarning;$("storageWarn").hidden=false;$("saveState").textContent="저장 중지 · 기록은 엑셀로, 초안은 따로 보관하세요.";return false;}
-    S.version = 5;
+    S.version = 6;
     S.rows = rows;
     S.current = cur;
     S.draft = $("textIn").value;

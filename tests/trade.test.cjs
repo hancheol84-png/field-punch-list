@@ -1,4 +1,9 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),T=require('../trade.js');
+test('R35: plaster repair and gypsum gap repair use the requested trade names',()=>{
+ for(const text of ['미장 보수','미 장 보수','침실1 골조 턱 단차 미장 보수'])assert.equal(T.classify(text).trade,'미장',text);
+ for(const text of ['석고틈새 보수','팬 트리룸 상부 석고 틈새 보수','석 고 이음부 벌어짐 보수'])assert.equal(T.classify(text).trade,'내장',text);
+ for(const text of ['미장 보수 불필요','석고 틈새 보수 의심','미장','석고','견출 미장 보수','석고 벽 단차 미장 보수','타일 보수 및 석고 틈새 보수'])assert.equal(T.classify(text).trade,'',text);
+});
 test('R28: short on-device findings and cabinet speech spacing classify without rewriting',()=>{
  const samples=[
   ['공용 욕실 바닥 타일 들뜸','타일'],

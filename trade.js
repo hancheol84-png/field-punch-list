@@ -10,7 +10,9 @@
   ['전기',/콘센트|스위치|등기구|조명/,/전원|작동|점등|누전|결선|전선|깜빡|점멸|불점등|고정|파손|충전|흔들|누락|불량/],
   ['도장',/페인트|도장면|도장부/,/벗겨|벗김|벗겨짐|흘러|흐름|얼룩|누락|박리|보수|불량|기포|핀홀|갈라|균열|들뜸/],
   ['골조견출',/견출/,/보수|불량|누락|필요/],
-  ['골조할석',/할석/,/필요|보수|불량|누락/]
+  ['골조할석',/할석/,/필요|보수|불량|누락/],
+  ['미장',/미\s*장/,/보수|필요|불량|누락|단차|균열|틈\s*새|마감/],
+  ['내장',/석\s*고/,/틈\s*새|보수|불량|누락|마감|파손|이음|단차|벌어|깨짐/]
  ];
  const explicitTrades=[
   ['PL창호',/창\s*호/],
@@ -57,6 +59,7 @@
    return {trade:explicit[0],reason:'명시된 공종 키워드'};
   }
   const distinctObjects=new Set(rules.filter(([,object])=>object.test(source)).map(([trade])=>trade));
+  if(distinctObjects.has('미장') && ['내장','골조견출','골조할석'].some(trade=>distinctObjects.has(trade)))return {trade:'',reason:'여러 작업 단서: 확인 필요'};
   if(distinctObjects.size>1 && /[,，、;；]|\s및\s|\s그리고\s/.test(source))return {trade:'',reason:'여러 대상과 증상: 확인 필요'};
   if(negatedPattern.test(source))return {trade:'',reason:'부정·추측 표현: 확인 필요'};
   const hits=relatedTrades(source);

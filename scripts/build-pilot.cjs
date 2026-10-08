@@ -3,14 +3,14 @@ const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
 function artifacts(){
  const out={};
- for(const name of ['cloud.js','export.js','speech.js','trade.js','icon.svg'])out[name]=fs.readFileSync(path.join(root,name),'utf8');
+ for(const name of ['cloud.js','export.js','speech.js','trade.js','spot.js','icon.svg'])out[name]=fs.readFileSync(path.join(root,name),'utf8');
  out['index.html']=fs.readFileSync(path.join(root,'index.html'),'utf8')
   .replace('<head>','<head>\n<script>globalThis.PunchPilotRequired=true;document.documentElement.dataset.cloud="on";</script>')
   .replace('<title>현장 펀치리스트</title>','<title>현장 펀치리스트 · 시범운영</title>')
   .replace('<section id="cloudLogin"','<p id="pilotNotice" class="note" style="max-width:480px;margin:16px auto;padding:0 20px">시범운영 · 계정별 서버 저장</p>\n<section id="cloudLogin"')
-  .replace('앱 버전 2026.10.07.1','앱 버전 2026.10.07.2 · 시범운영');
+  .replace('앱 버전 2026.10.08.1','앱 버전 2026.10.08.2 · 시범운영');
  out['manifest.webmanifest']=JSON.stringify({...JSON.parse(fs.readFileSync(path.join(root,'manifest.webmanifest'),'utf8')),id:'./',name:'현장 펀치리스트 · 시범운영',short_name:'펀치리스트 시험'},null,2)+'\n';
- out['sw.js']=fs.readFileSync(path.join(root,'sw.js'),'utf8').replace("const CACHE=PREFIX+'v27';","const CACHE=PREFIX+'pilot-v2';");
+ out['sw.js']=fs.readFileSync(path.join(root,'sw.js'),'utf8').replace("const CACHE=PREFIX+'v28';","const CACHE=PREFIX+'pilot-v3';");
  return out;
 }
 if(require.main===module){

@@ -85,3 +85,9 @@ test('R34: upgrading the conflict response preserves records and RPC permissions
  const rights=(await db.query("select has_function_privilege('anon','public.punch_push(jsonb,bigint)','execute') as anon_push,has_function_privilege('authenticated','public.punch_push(jsonb,bigint)','execute') as signedin_push")).rows[0];
  assert.deepEqual(rights,{anon_push:false,signedin_push:true});
 });
+
+test('R36: location metadata is preserved by existing validated account storage',async()=>{
+ const initial=await pull(B),r=row('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','침실 이 석고 틈새 보수');r.spot='침실2';r.trade='내장';r.spotMode='auto';r.spotReason='말한 위치 자동 인식';
+ await push(B,{rows:[r]},initial.revision);const saved=(await pull(B)).state.rows[0];
+ for(const key of ['spot','spotMode','spotReason','trade','text'])assert.equal(saved[key],r[key]);assert.equal((await pull(A)).state.rows.some(row=>row.id===r.id),false);
+});

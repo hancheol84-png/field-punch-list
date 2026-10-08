@@ -226,7 +226,9 @@
   <!-- 위치 · 공종 -->
   <div class="card">
     <p class="sec-t">위치</p>
+    <div class="row"><button id="spotAuto" class="chip" aria-pressed="true">말한 위치 자동</button><button id="spotFixed" class="chip" aria-pressed="false">선택 위치 고정</button></div>
     <div class="row" id="spots"></div>
+    <p id="spotModeNote" class="note" role="status" aria-live="polite"></p>
     <p class="sec-t" style="margin-top:14px">공종</p>
     <div class="row"><button id="tradeAuto" class="chip" aria-pressed="true">자동 분류</button></div>
     <div class="row" id="trades" style="margin-top:8px"></div>
@@ -248,7 +250,7 @@
     </div></div>
   </div>
 
-  <div id="recentEntry" class="recent" hidden><div class="row" style="justify-content:space-between"><strong>최근 등록</strong><button id="recentEdit" class="btn sm">바로 수정</button></div><p id="recentContext" class="note"></p><p id="recentText"></p><button id="recentReview" class="btn sm" data-view="true" hidden>보정 확인</button></div>
+  <div id="recentEntry" class="recent" hidden><div class="row" style="justify-content:space-between"><strong>최근 등록</strong><button id="recentEdit" class="btn sm">바로 수정</button></div><p id="recentContext" class="note"></p><p id="recentSpotNote" class="note" role="status"></p><p id="recentText"></p><button id="recentReview" class="btn sm" data-view="true" hidden>보정 확인</button></div>
   <div id="recentTradeConflict" class="bad" role="status" aria-live="polite" hidden><p id="recentTradeConflictText"></p><button id="recentTradeAuto" class="btn sm">다음 입력 자동 분류</button></div>
 
   <!-- 목록 -->
@@ -308,7 +310,7 @@
     </details>
   </div>
 
-  <p class="note">앱 버전 2026.10.07.1 · 한 현장의 입력과 엑셀 받기</p>
+  <p class="note">앱 버전 2026.10.08.1 · 한 현장의 입력과 엑셀 받기</p>
   <!-- 진단 -->
   <div class="card">
     <details>
@@ -356,6 +358,7 @@
 <script src="./export.js"></script>
 <script src="./speech.js"></script>
 <script src="./trade.js"></script>
+<script src="./spot.js"></script>
 <script>
 (async function(){
   "use strict";
@@ -428,7 +431,7 @@
   };
   var S = load();
   var rows = S.rows || [];
-  var cur = S.current || {dong: S.dongs[0], unit:"", spot:"", trade:"",tradeMode:"auto"};
+  var cur = S.current || {dong: S.dongs[0], unit:"", spot:"",spotMode:"auto", trade:"",tradeMode:"auto"};
   var stat = {up:0, restarts:0, heard:0, fixed:0};
   var rec = null, listening = false, startedAt = 0, tick = null;
   var viewingRow=null, editingRow=null, deletedAction=null, restoreTimer=null;
@@ -451,11 +454,12 @@
       if(o.version<6)base.trades=Array.from(new Set(base.trades.concat(['미장','내장'])));
       o.rows.forEach(function(r){
         if(!r || typeof r!=='object' || !['dong','unit','text'].every(function(k){return typeof r[k]==='string';}))throw Error('format');
-        ['core','spot','trade','createdAt','downloadRequestedAt','inputText','inputKind','tradeReason'].forEach(function(k){if(r[k]!==undefined && typeof r[k]!=='string')throw Error('format');});
+        ['core','spot','spotReason','trade','createdAt','downloadRequestedAt','inputText','inputKind','tradeReason'].forEach(function(k){if(r[k]!==undefined && typeof r[k]!=='string')throw Error('format');});
       });
       if(o.speechRules!==undefined){if(!PunchSpeech.validRules(o.speechRules))throw Error("rules");base.speechRules=o.speechRules;}
       o.rows.forEach(function(r){
         if(r.tradeMode!==undefined && !["manual","auto"].includes(r.tradeMode))throw Error("trade mode");
+        if(r.spotMode!==undefined && !["manual","auto"].includes(r.spotMode))throw Error("spot mode");
         if(r.inputKind!==undefined && !["speech","text"].includes(r.inputKind))throw Error("input kind");
         if(r.correctionLog!==undefined && !PunchSpeech.validRules(r.correctionLog))throw Error("correction log");
       });
@@ -463,7 +467,8 @@
       if(o.current!==undefined){
         if(!o.current || !['dong','unit','spot','trade'].every(function(k){return typeof o.current[k]==='string';}))throw Error('format');
         if(o.current.tradeMode!==undefined && !["manual","auto"].includes(o.current.tradeMode))throw Error("current trade mode");
-        base.current={dong:o.current.dong,unit:o.current.unit,spot:o.current.spot,trade:o.current.trade,tradeMode:o.current.tradeMode||(o.current.trade ? "manual" : "auto")};
+        if(o.current.spotMode!==undefined && !["manual","auto"].includes(o.current.spotMode))throw Error("current spot mode");
+        base.current={dong:o.current.dong,unit:o.current.unit,spot:o.current.spot,spotMode:o.current.spotMode||"auto",trade:o.current.trade,tradeMode:o.current.tradeMode||(o.current.trade ? "manual" : "auto")};
       }
       unreadableRaw=null;return base;
     }catch(e){
@@ -530,11 +535,11 @@
     var pills = [];
     var core = coreOf(cur.unit);
     if(core) pills.push(core);
-    if(cur.spot) pills.push(cur.spot);
+    if(cur.spot) pills.push((cur.spotMode==="manual" ? "고정 " : "기본 ")+cur.spot);
     if(cur.tradeMode==="auto")pills.push("공종 자동");else if(cur.trade)pills.push(cur.trade);
     $("ctxSub").innerHTML = pills.length
       ? pills.map(function(p){ return '<span class="pill">'+esc(p)+'</span>'; }).join("")
-      : '<span class="pill">위치·공종을 고르면 계속 유지됩니다</span>';
+      : '<span class="pill">말한 위치·공종을 확인하세요</span>';
   }
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]; }); }
 
@@ -570,9 +575,15 @@
     });
   }
   function paintSpots(){
-    chips($("spots"), S.spots, cur.spot, function(v){ cur.spot = (cur.spot===v ? "" : v); save(); paintCtx(); paintSpots(); },
+    $("spotAuto").classList.toggle("on",cur.spotMode==="auto");$("spotAuto").setAttribute("aria-pressed",String(cur.spotMode==="auto"));$("spotAuto").disabled=!canEdit();
+    $("spotFixed").classList.toggle("on",cur.spotMode==="manual");$("spotFixed").setAttribute("aria-pressed",String(cur.spotMode==="manual"));$("spotFixed").disabled=!canEdit()||!cur.spot;
+    $("spotModeNote").className=cur.spotMode==="manual" ? "bad" : "good";
+    $("spotModeNote").textContent=cur.spotMode==="manual" ? "위치 고정 · "+cur.spot+"이 이 세대의 다음 입력에도 적용됩니다." : "말한 위치 우선 · 내용에 위치가 없으면 "+(cur.spot ? "선택한 ‘"+cur.spot+"’을 사용합니다." : "위치 버튼으로 선택하세요.");
+    chips($("spots"), S.spots, cur.spot, function(v){ cur.spot = (cur.spot===v ? "" : v);if(!cur.spot)cur.spotMode="auto"; save(); paintCtx(); paintSpots(); },
       "＋ 위치", function(){var v=newChoice(S.spots,"위치 이름");if(v){S.spots.push(v);cur.spot=v;save();paintSpots();paintCtx();}});
   }
+  $("spotAuto").onclick=function(){if(!canEdit())return;cur.spotMode="auto";save();paintSpots();paintCtx();};
+  $("spotFixed").onclick=function(){if(!canEdit()||!cur.spot)return;cur.spotMode="manual";save();paintSpots();paintCtx();};
   function chooseAutoTrade(){if(!canEdit())return;cur.tradeMode="auto";cur.trade="";save();paintCtx();paintTrades();paintRows();}
   $("tradeAuto").onclick=chooseAutoTrade;
   $("micTradeAuto").onclick=chooseAutoTrade;
@@ -804,6 +815,7 @@
     paintRetention();
     var recent=rows[rows.length-1];$("recentEntry").hidden=!recent;
     if(recent){$("recentContext").textContent=recent.dong+"동 "+recent.unit+"호 · "+(recent.spot||"위치 미지정")+" · "+tradeLabel(recent);$("recentText").textContent=recent.text;}
+    $("recentSpotNote").hidden=!recent||!recent.spotReason;$("recentSpotNote").textContent=recent ? recent.spotReason||"" : "";$("recentSpotNote").className=recent&&!recent.spot ? "bad" : "note";
     var suggested=recent && recent.tradeMode==="manual" ? PunchTrade.classify(recent.text).trade : "";
     $("recentTradeConflict").hidden=!suggested || suggested===recent.trade;
     $("recentTradeConflictText").textContent=suggested && suggested!==recent.trade ? "최근 항목은 수동 지정 ‘"+recent.trade+"’로 저장됐지만 내용 기준은 ‘"+suggested+"’입니다. ‘바로 수정’에서 이 항목의 공종을 확인하세요." : "";
@@ -880,6 +892,7 @@
     if(error){$("editWarn").textContent=error;$("editWarn").hidden=false;return;}
     var learned=editingRow && $("editLearn").checked ? PunchSpeech.correctionCandidate(editingRow.text,patch.text,S.speechRules) : null;
     patch.core=coreOf(patch.unit);
+    if(patch.spot!==(editingRow.spot||"")){patch.spotMode="manual";patch.spotReason="직접 수정한 위치";}
     if(patch.text!==editingRow.text)editingRow.correctionLog=[];
     Object.assign(editingRow,patch);delete editingRow.downloadRequestedAt;
     if(learned){S.speechRules=S.speechRules.filter(function(rule){return rule.from!==learned.from;}).concat([learned]);paintSpeechRules();}
@@ -919,8 +932,9 @@
   var pendingContext=null;
   function contextLabel(value){return value.dong+"동 "+(value.unit ? value.unit+"호" : "호수 미지정");}
   function applyContext(next){
+    if(next.dong!==cur.dong||next.unit!==cur.unit){next.spot="";next.spotMode="auto";}
     Object.assign(cur,next);$("unitIn").value="";
-    resetListPages();openGroup=groupKey(cur);save();paintCtx();paintNext();paintDongs();paintRows();$("inputWarn").hidden=true;say(contextLabel(cur));
+    resetListPages();openGroup=groupKey(cur);save();paintCtx();paintSpots();paintNext();paintDongs();paintRows();$("inputWarn").hidden=true;say(contextLabel(cur));
     if(listening)openRecognition();
   }
   function requestContext(next){
@@ -976,6 +990,8 @@
     }
     $("inputWarn").hidden = true;
     var entry={tradeMode:cur.tradeMode,tradeReason:"직접 선택",createdAt:new Date().toISOString(),dong:cur.dong,core:coreOf(cur.unit),unit:cur.unit,spot:cur.spot,trade:cur.trade,text:text.trim()};
+    var spotDecision=PunchSpot.resolve(entry.text,S.spots,cur.spot,cur.spotMode);
+    entry.spot=spotDecision.spot;entry.spotMode=cur.spotMode;entry.spotReason=spotDecision.reason;
     if(cloud)entry.id=crypto.randomUUID();
     updateAutoTrade(entry);
     if(origin){entry.inputText=origin.text;entry.inputKind=origin.kind;entry.correctionLog=origin.log;}
@@ -994,7 +1010,7 @@
   /* ---------- 말 해석 ---------- */
   function handle(said){
     stat.heard++;
-    // Speech is content, never a command or a guessed location/trade.
+    // Speech is content, never a command. Registered explicit locations are separate metadata.
     // Keep internal spacing, punctuation, measurements and negation intact.
     addInput(said,"speech");
     paintStat();
@@ -1195,7 +1211,7 @@
     if(next.site!==S.site)clearDeletedAction();
     Object.assign(S,next);
     if(S.dongs.indexOf(cur.dong)<0){cur.dong=S.dongs[0];cur.unit="";}
-    if(S.spots.indexOf(cur.spot)<0)cur.spot="";
+    if(S.spots.indexOf(cur.spot)<0){cur.spot="";cur.spotMode="auto";}
     if(S.trades.indexOf(cur.trade)<0){cur.trade="";cur.tradeMode="auto";}
     $("setupWarn").hidden=true;
     save();paintAll();$("setup").open=false;
@@ -1208,7 +1224,7 @@
     stopMic();
     clearDeletedAction();
     var keep = rows;
-    S = JSON.parse(JSON.stringify(DEF)); rows = keep; cur={dong:S.dongs[0],unit:"",spot:"",trade:"",tradeMode:"auto"}; save(); paintAll();
+    S = JSON.parse(JSON.stringify(DEF)); rows = keep; cur={dong:S.dongs[0],unit:"",spot:"",spotMode:"auto",trade:"",tradeMode:"auto"}; save(); paintAll();
   };
 
   function paintSetupFields(){

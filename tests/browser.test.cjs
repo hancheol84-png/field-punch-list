@@ -95,7 +95,7 @@ test('R32: pilot and main offline shells keep separate scopes and caches',async 
  const pilot=await main.context().newPage();await pilot.goto(origin+'/field-punch-list/pilot/');await pilot.locator('#cloudLoginForm').waitFor({state:'visible'});
  await pilot.evaluate(async()=>{await navigator.serviceWorker.register('./sw.js',{scope:'./'});await navigator.serviceWorker.ready;});
  await pilot.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('/pilot/sw.js'));
- const keys=await pilot.evaluate(()=>caches.keys());assert.ok(keys.some(key=>key.includes('/field-punch-list/:v27')));assert.ok(keys.some(key=>key.includes('/field-punch-list/pilot/:pilot-v2')));
+ const keys=await pilot.evaluate(()=>caches.keys());assert.ok(keys.some(key=>key.includes('/field-punch-list/:v28')));assert.ok(keys.some(key=>key.includes('/field-punch-list/pilot/:pilot-v3')));
  await main.context().setOffline(true);await pilot.reload();await pilot.locator('#cloudLoginForm').waitFor({state:'visible'});assert.equal(await pilot.locator('#appWrap').isVisible(),false);
  await main.reload();await main.waitForFunction(()=>document.documentElement.dataset.ready==='true');assert.equal(await main.locator('#appWrap').isVisible(),true);
  const cached=await pilot.evaluate(async()=>{const result=[];for(const key of await caches.keys())for(const request of await (await caches.open(key)).keys())result.push(request.url);return result;});
@@ -565,6 +565,7 @@ async function speak(page,text){
 test('R21: speech preserves complete sentences and never guesses fields or executes commands',async t=>{
  const page=await pageFor(t,fakeSpeech);await selectUnit(page);
  await page.locator('#spots').getByRole('button',{name:'거실',exact:true}).click();await page.locator('#trades').getByRole('button',{name:'타일',exact:true}).click();
+ await page.locator('#spotFixed').click();
  await page.locator('#micBtn').click();
  const samples=['균열 없음','양호 확인','발코니 확인','욕실 확인','침실1 도장  우측 벽\n균열 없음.','8미리미터 단차','십오 밀리 부족','단자 보수, 서고 확인','102동 1601호와 비교','삭제','취소','겸출 보수'];
  for(const sentence of samples)await speak(page,sentence);
@@ -755,4 +756,43 @@ test('R35: new voice findings use plaster/interior trades while saved records an
  assert.deepEqual(state.rows.map(r=>r.trade),['골조미장','미장','내장']);assert.equal(state.rows[1].text,'침실 일 미장 보수');
  await page.locator('#trades').getByRole('button',{name:'내장',exact:true}).click();await speak(page,'미장 보수');
  state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows.at(-1).trade,'내장');assert.equal(state.rows.at(-1).tradeMode,'manual');
+});
+
+test('R36: spoken locations override only the fallback and fixed mode stays explicit',async t=>{
+ const page=await pageFor(t,fakeSpeech);await selectUnit(page);
+ await page.locator('#spots').getByRole('button',{name:'팬트리룸',exact:true}).click();await page.locator('#micBtn').click();
+ await speak(page,'침실 이 미장 보수');await speak(page,'석고 틈새 보수');
+ let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));
+ assert.deepEqual(state.rows.map(r=>[r.spot,r.trade]),[['침실2','미장'],['팬트리룸','내장']]);
+ assert.equal(state.rows[0].text,'침실 이 미장 보수');assert.equal(state.rows[0].inputText,'침실 이 미장 보수');assert.equal(state.current.spot,'팬트리룸');
+ await page.locator('#spotFixed').click();await speak(page,'침실 삼 석고 틈새 보수');assert.match(await page.locator('#spotModeNote').textContent(),/위치 고정/);
+ await page.locator('#spotAuto').click();await speak(page,'거실 및 주방 미장 보수');
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[2].spot,'팬트리룸');assert.equal(state.rows[2].spotMode,'manual');assert.equal(state.rows[3].spot,'');assert.match(await page.locator('#recentSpotNote').textContent(),/여러 위치/);
+ await page.locator('#micBtn').click();await page.locator('#textIn').fill('부부 욕실 타일 깨짐');await page.locator('#addBtn').click();
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[4].spot,'부부욕실');assert.equal(state.rows[4].text,'부부 욕실 타일 깨짐');
+ fs.mkdirSync(path.join(root,'.test-output/classification-implementation-20261008'),{recursive:true});await page.locator('#recentEntry').screenshot({path:path.join(root,'.test-output/classification-implementation-20261008/recent-location.png')});
+ const createdBeforeEdit=state.rows[4].createdAt;
+ await page.locator('#recentEdit').click();await page.locator('#editSpot').fill('거실');await page.locator('#editSave').click();
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[4].spot,'거실');assert.equal(state.rows[4].spotMode,'manual');assert.equal(state.rows[4].createdAt,createdBeforeEdit);
+});
+
+test('R36: saving a draft before a unit move keeps its old location and clears the new context',async t=>{
+ const page=await pageFor(t);await selectUnit(page);await page.locator('#spots').getByRole('button',{name:'팬트리룸',exact:true}).click();await page.locator('#spotFixed').click();
+ await page.locator('#textIn').fill('미장 보수 15mm 단차');await page.locator('#unitIn').fill('1504');await page.locator('#unitGo').click();await page.locator('#draftSaveMove').click();
+ let state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[0].unit,'1503');assert.equal(state.rows[0].spot,'팬트리룸');assert.equal(state.current.spot,'');assert.equal(state.current.spotMode,'auto');assert.equal(state.rows[0].text,'미장 보수 15mm 단차');
+ await page.locator('#textIn').fill('안방 석고 틈새 보수');await page.locator('#addBtn').click();assert.match(await page.locator('#recentSpotNote').textContent(),/등록되지 않은 위치: 안방/);
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.rows[1].spot,'');assert.ok(!state.spots.includes('안방'));
+ await page.locator('#spots').getByRole('button',{name:'거실',exact:true}).click();await page.locator('#unitIn').fill('1505');await page.locator('#unitGo').click();
+ state=await page.evaluate(()=>JSON.parse(localStorage.getItem('punchlist.v2')));assert.equal(state.current.spot,'');await page.reload();assert.equal(await page.locator('#spotAuto').getAttribute('aria-pressed'),'true');
+});
+
+test('R36: phone location and trade metadata survive account sync, PC reading and XLSX download',async t=>{
+ const {backend,USERS}=require('./cloud-browser-fixture.cjs'),api=backend();const phone=await pageFor(t,fakeSpeech,{cloud:api});await loginAccount(phone,'pilot01');await selectUnit(phone);await phone.locator('#micBtn').click();
+ await speak(phone,'침실 이 미장 보수');await speak(phone,'팬 트리룸 석고 틈새 보수');await phone.locator('#cloudSyncBtn').click();
+ await phone.waitForFunction(()=>document.querySelector('#cloudSyncText').textContent.includes('서버 저장 완료'));
+ const pc=await pageFor(t,null,{cloud:api});await pc.setViewportSize({width:1280,height:900});await loginAccount(pc,'pilot01');
+ const state=api.states.get(USERS.pilot01);assert.deepEqual(state.state.rows.map(r=>[r.spot,r.trade]),[['침실2','미장'],['팬트리룸','내장']]);
+ assert.match(await pc.locator('#tb').textContent(),/미장/);assert.match(await pc.locator('#tb').textContent(),/내장/);
+ const revision=state.revision,pending=pc.waitForEvent('download');await pc.locator('#downloadBtn').click();const download=await pending,stream=await download.createReadStream(),chunks=[];for await(const chunk of stream)chunks.push(chunk);
+ const result=require('node:child_process').execFileSync(process.env.PYTHON_PATH||'python',[path.join(__dirname,'verify_xlsx.py'),'--locations'],{input:Buffer.concat(chunks),encoding:'utf8'});assert.match(result,/OK/);assert.equal(state.revision,revision);
 });

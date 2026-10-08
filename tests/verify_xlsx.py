@@ -50,4 +50,10 @@ if '--review' in sys.argv:
     sheet=ref.make_sheet(reference,'전체',[{'공종':'','내용':'우측 벽 균열'}],'샘플현장','','날짜 미상')
     assert sheet['H5'].value == '공종 확인필요' and sheet.max_column == 8
     assert sheet.auto_filter.ref == 'A4:H5'
+if '--locations' in sys.argv:
+    ws=wb['전체']
+    assert {(ws.cell(i,5).value,ws.cell(i,6).value,ws.cell(i,7).value) for i in range(5,ws.max_row+1)} == {
+        ('침실2','미장','침실 이 미장 보수'),
+        ('팬트리룸','내장','팬 트리룸 석고 틈새 보수')
+    }
 print('ZIP CRC, XML, openpyxl, sheets, headers, string cells, print layout: OK')
